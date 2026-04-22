@@ -6,7 +6,7 @@ on:
       apk_path:
         description: 'رابط مباشر لملف الـ APK أو تأكد من وجوده في المستودع'
         required: true
-        default: 'app-release.apk'
+        default: 'app.apk'
 
 jobs:
   build:
