@@ -2,10 +2,6 @@ name: Advanced Protected APK
 
 on:
   workflow_dispatch:
-    inputs:
-      apk_url:
-        description: "Direct APK URL"
-        required: true
 
 jobs:
   build:
@@ -22,47 +18,44 @@ jobs:
           java-version: 17
 
       - name: Setup NDK
-        id: ndk_setup_unique
+        id: ndk_unique_id
         uses: nttld/setup-ndk@v1
         with:
           ndk-version: r26d
 
-      - name: Install tools
+      - name: Install dependencies
         run: |
           sudo apt update
-          sudo apt install -y wget unzip git zip python3 cmake ninja-build
+          sudo apt install -y wget unzip git zip cmake ninja-build python3
 
-      - name: Download APK
-        run: wget -O input.apk "${{ github.event.inputs.apk_url }}"
+      - name: Prepare APK
+        run: cp input/app.apk input.apk
 
-      - name: Get apktool
+      - name: Download apktool
         run: wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
 
       - name: Decode APK
         run: java -jar apktool.jar d input.apk -o apk_decoded
 
-      - name: Extract all DEX
+      - name: Extract DEX
         run: |
           unzip -o input.apk -d extracted
           mkdir dex
           find extracted -name "classes*.dex" -exec cp {} dex/ \;
 
-      - name: Clone obfuscator
+      - name: Clone native-obfuscator
         run: git clone https://github.com/radioegor146/native-obfuscator.git
 
-      - name: Patch shadowJar fix
+      - name: Fix shadowJar issue
         run: |
-          python3 -c "
-p='native-obfuscator/obfuscator/build.gradle'
-f=open(p,'a')
-f.write('\n\ntasks.withType(com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar).configureEach {\n')
-f.write('mergeServiceFiles()\n')
-f.write(\"exclude 'META-INF/*.SF'\\n\")
-f.write(\"exclude 'META-INF/*.DSA'\\n\")
-f.write(\"exclude 'META-INF/*.RSA'\\n\")
-f.write('duplicatesStrategy = DuplicatesStrategy.EXCLUDE\n}\n')
-f.close()
-"
+          echo "" >> native-obfuscator/obfuscator/build.gradle
+          echo "tasks.withType(com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar).configureEach {" >> native-obfuscator/obfuscator/build.gradle
+          echo "    mergeServiceFiles()" >> native-obfuscator/obfuscator/build.gradle
+          echo "    exclude 'META-INF/*.SF'" >> native-obfuscator/obfuscator/build.gradle
+          echo "    exclude 'META-INF/*.DSA'" >> native-obfuscator/obfuscator/build.gradle
+          echo "    exclude 'META-INF/*.RSA'" >> native-obfuscator/obfuscator/build.gradle
+          echo "    duplicatesStrategy = DuplicatesStrategy.EXCLUDE" >> native-obfuscator/obfuscator/build.gradle
+          echo "}" >> native-obfuscator/obfuscator/build.gradle
 
       - name: Build obfuscator
         run: |
@@ -81,50 +74,36 @@ f.close()
           unzip dex-tools-2.4.zip
           chmod +x dex-tools-2.4/*.sh
 
-      - name: Convert ALL dex
+      - name: Convert DEX to JAR
         run: |
           mkdir jars
           for f in dex/*.dex; do
             dex-tools-2.4/d2j-dex2jar.sh "$f" -o jars/$(basename "$f").jar || true
           done
 
-      - name: Run obfuscator on all jars
+      - name: Run obfuscator
         run: |
           mkdir cpp
           for f in jars/*.jar; do
             java -jar native-obfuscator/obfuscator/build/libs/$JAR "$f" cpp || true
           done
 
-      - name: Inject anti-tamper + anti-debug
+      - name: Add anti-debug C++
         run: |
-          python3 -c "
-import os
-code = r'''
-#include <jni.h>
-#include <string.h>
-#include <unistd.h>
+          echo '#include <jni.h>' >> cpp/protect.cpp
+          echo '#include <stdio.h>' >> cpp/protect.cpp
+          echo '#include <string.h>' >> cpp/protect.cpp
+          echo 'extern "C" JNIEXPORT jboolean JNICALL Java_com_protect_Check_verify(JNIEnv* env, jobject thiz) {' >> cpp/protect.cpp
+          echo 'FILE* f = fopen("/proc/self/status","r");' >> cpp/protect.cpp
+          echo 'if (!f) return JNI_TRUE;' >> cpp/protect.cpp
+          echo 'char line[256];' >> cpp/protect.cpp
+          echo 'while (fgets(line,sizeof(line),f)) {' >> cpp/protect.cpp
+          echo 'if (strstr(line,"TracerPid")) {' >> cpp/protect.cpp
+          echo 'if (strcmp(line,"TracerPid:\t0\n") != 0) {' >> cpp/protect.cpp
+          echo 'fclose(f); return JNI_FALSE; }}}' >> cpp/protect.cpp
+          echo 'fclose(f); return JNI_TRUE; }' >> cpp/protect.cpp
 
-extern \"C\" JNIEXPORT jboolean JNICALL
-Java_com_protect_Check_verify(JNIEnv* env, jobject thiz) {
-    FILE* f = fopen(\"/proc/self/status\", \"r\");
-    if (!f) return JNI_TRUE;
-    char line[256];
-    while (fgets(line, sizeof(line), f)) {
-        if (strstr(line, \"TracerPid\")) {
-            if (strcmp(line, \"TracerPid:\\t0\\n\") != 0) {
-                fclose(f);
-                return JNI_FALSE;
-            }
-        }
-    }
-    fclose(f);
-    return JNI_TRUE;
-}
-'''
-open('cpp/protect.cpp','w').write(code)
-"
-
-      - name: Build SO (arm64)
+      - name: Build arm64
         run: |
           mkdir build
           cd build
@@ -137,7 +116,7 @@ open('cpp/protect.cpp','w').write(code)
           mkdir -p ../libs/arm64-v8a
           find . -name "*.so" -exec cp {} ../libs/arm64-v8a/ \;
 
-      - name: Build SO (armeabi-v7a)
+      - name: Build armeabi
         run: |
           rm -rf build/*
           cd build
@@ -153,26 +132,26 @@ open('cpp/protect.cpp','w').write(code)
       - name: Remove DEX
         run: rm apk_decoded/classes*.dex || true
 
-      - name: Inject SO
+      - name: Add SO
         run: |
           mkdir -p apk_decoded/lib/arm64-v8a
           mkdir -p apk_decoded/lib/armeabi-v7a
           cp libs/arm64-v8a/*.so apk_decoded/lib/arm64-v8a/ || true
           cp libs/armeabi-v7a/*.so apk_decoded/lib/armeabi-v7a/ || true
 
-      - name: Force load library (smali)
+      - name: Force load library
         run: |
           python3 -c "
 import os
 for root, dirs, files in os.walk('apk_decoded/smali'):
     for f in files:
         if f.endswith('.smali'):
-            path=os.path.join(root,f)
-            data=open(path).read()
-            if 'loadLibrary' not in data:
-                data=data.replace('.method public constructor <init>()V',
+            p=os.path.join(root,f)
+            d=open(p).read()
+            if 'loadLibrary' not in d:
+                d=d.replace('.method public constructor <init>()V',
                 '.method public constructor <init>()V\n    const-string v0, \"protect\"\n    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V')
-                open(path,'w').write(data)
+                open(p,'w').write(d)
                 break
 "
 
@@ -186,7 +165,7 @@ for root, dirs, files in os.walk('apk_decoded/smali'):
           keytool -genkey -v -keystore key.jks -storepass 123456 -alias key -keypass 123456 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=App,O=App,C=US"
           build-tools/android-34/apksigner sign --ks key.jks --ks-pass pass:123456 --key-pass pass:123456 --out final.apk unsigned.apk
 
-      - name: Upload
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: protected-apk
