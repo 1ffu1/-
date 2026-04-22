@@ -1,4 +1,4 @@
-name: Professional Targeted Protection (Full Graph Support)
+name: Professional Targeted Protection (Fixed & Stable)
 
 on:
   workflow_dispatch:
@@ -7,10 +7,6 @@ on:
         description: 'اسم ملف الـ APK (مثلاً app.apk)'
         required: true
         default: 'app.apk'
-      my_package:
-        description: 'الباكج نيم الخاص بك (مثلاً com/example/app)'
-        required: true
-        default: 'com/*/*'
 
 jobs:
   build:
@@ -39,9 +35,14 @@ jobs:
       - name: Setup Tools & Comprehensive Dependencies
         run: |
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
-          # تثبيت كافة المكتبات الأساسية والفرعية لمحرك تحليل الأندرويد
-          # أضفنا networkx لحل مشكلة تحليل الرسوم البيانية للكود
+          # تثبيت كافة المكتبات اللازمة لضمان عدم توقف Androguard
           pip install pyelftools click asn1crypto cryptography lxml requests networkx
+
+      - name: Create Precision Filter File
+        run: |
+          # التحليل: الأداة لا تقبل (+) أو (-). نستخدم Regex يبدأ بـ ^L لمنع خطأ البايثون.
+          # هذا السطر يحمي كل شيء (.*) بشرط ألا يكون (?!...) تابعاً لمكتبات النظام.
+          echo '^L(?!android/|androidx/|com/google/|com/android/|kotlin/|okhttp3/|okio/|org/xmlpull/).*' > dex2c_tool/filter.txt
 
       - name: Execute Targeted Hardening
         run: |
@@ -51,13 +52,13 @@ jobs:
           fi
           
           cd dex2c_tool
-          # حماية الكود المصدري الخاص بك مع استقرار المكتبات العامة
-          echo "+${{ github.event.inputs.my_package }}/*" > filter.txt
           
+          # تشغيل dcc باستخدام الفلتر المصلح برمجياً
           python3 dcc.py \
           -a ../${{ github.event.inputs.apk_name }} \
           -o ../protected_output.apk \
-          --filter filter.txt
+          --filter filter.txt \
+          --allow-global
           
       - name: Upload Result
         uses: actions/upload-artifact@v4
