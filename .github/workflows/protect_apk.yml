@@ -1,4 +1,4 @@
-name: Extreme Dex2C Protection (Final Fixed)
+name: Extreme Dex2C Protection (Master Fix)
 
 on:
   workflow_dispatch:
@@ -40,8 +40,8 @@ jobs:
 
       - name: Create Precision Filter File
         run: |
-          # تصحيح الـ Regex: استخدام .* بدلاً من * لمنع خطأ PatternError
-          # ملاحظة: يجب ألا تكون هناك مسافات بادئة داخل ملف الفلتر
+          # تصحيح الـ Regex: استخدام .* بدلاً من * لمنع خطأ بايثون (PatternError)
+          # استثناء كل المكتبات التي سببت الانهيار في صورك السابقة
           cat <<EOF > dex2c_tool/precision_filter.txt
           -android/.*
           -androidx/.*
@@ -63,7 +63,7 @@ jobs:
           
           cd dex2c_tool
           
-          # التنفيذ مع التأكد من المسارات
+          # التنفيذ باستخدام الفلتر الجديد المصلح برمجياً
           python3 dcc.py \
           -a ../${{ github.event.inputs.apk_name }} \
           -o ../protected_output.apk \
