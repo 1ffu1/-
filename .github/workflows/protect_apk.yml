@@ -4,9 +4,9 @@ on:
   workflow_dispatch:
     inputs:
       apk_name:
-        description: 'اسم ملف الـ APK (مثلاً base.apk)'
+        description: 'اسم ملف الـ APK (مثلاً app.apk)'
         required: true
-        default: 'base.apk'
+        default: 'app.apk'
 
 jobs:
   build:
@@ -34,20 +34,21 @@ jobs:
 
       - name: Download Dex2C Tool (codehasan)
         run: |
-          # تحميل الأداة من الرابط الذي أرسلته
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
           cd dex2c_tool
-          pip install -r requirements.txt || pip install click
+          pip install -r requirements.txt || pip install click pyelftools
 
       - name: Execute Protection (Dex2C)
         run: |
+          # التأكد من وجود ملف الـ APK
           if [ ! -f "${{ github.event.inputs.apk_name }}" ]; then
             echo "Error: File ${{ github.event.inputs.apk_name }} not found!"
             exit 1
           fi
           
-          # تشغيل التحويل باستخدام النسخة الجديدة
-          python3 dex2c_tool/dex2c.py ${{ github.event.inputs.apk_name }} \
+          # تشغيل الأداة (استخدام dcc.py هو السر هنا)
+          # خيار --الافتراضي يحمي الميثودز الأساسية، لتحويل كلي ستحتاج لملف filter (اختياري)
+          python3 dex2c_tool/dcc.py ${{ github.event.inputs.apk_name }} \
           --ndk ${{ env.ANDROID_NDK_HOME }} \
           --output protected_output.apk
 
