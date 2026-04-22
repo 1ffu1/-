@@ -32,22 +32,21 @@ jobs:
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Download Dex2C Tool (Stable Mirror)
+      - name: Download Dex2C Tool (codehasan)
         run: |
-          # محاولة تحميل الأداة من مستودع بديل شغال
-          git clone --depth 1 https://github.com/amllv/dex2c.git dex2c_tool
+          # تحميل الأداة من الرابط الذي أرسلته
+          git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
           cd dex2c_tool
           pip install -r requirements.txt || pip install click
 
       - name: Execute Protection (Dex2C)
         run: |
-          # التأكد من وجود ملف الـ APK قبل البدء
           if [ ! -f "${{ github.event.inputs.apk_name }}" ]; then
-            echo "Error: File ${{ github.event.inputs.apk_name }} not found in repository!"
+            echo "Error: File ${{ github.event.inputs.apk_name }} not found!"
             exit 1
           fi
           
-          # تشغيل التحويل
+          # تشغيل التحويل باستخدام النسخة الجديدة
           python3 dex2c_tool/dex2c.py ${{ github.event.inputs.apk_name }} \
           --ndk ${{ env.ANDROID_NDK_HOME }} \
           --output protected_output.apk
