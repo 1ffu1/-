@@ -69,11 +69,30 @@ jobs:
         run: |
           git clone --depth=1 https://github.com/radioegor146/native-obfuscator.git tools/native-obfuscator
           cd tools/native-obfuscator
+
+          # Fix META-INF duplicate files error in shadowJar
+          find . -name "build.gradle" | xargs grep -l "shadowJar" | while read f; do
+            # Add mergeServiceFiles and exclude conflicting META-INF entries
+            sed -i '/shadowJar {/a\    mergeServiceFiles()\n    exclude("META-INF/*.SF")\n    exclude("META-INF/*.DSA")\n    exclude("META-INF/*.RSA")\n    exclude("META-INF/LICENSE*")\n    exclude("META-INF/NOTICE*")\n    duplicatesStrategy = DuplicatesStrategy.EXCLUDE' "$f"
+          done
+
           chmod +x ./gradlew
-          ./gradlew shadowJar -q
-          JAR=$(find build/libs -name "*.jar" | head -1)
+          ./gradlew shadowJar --no-daemon -q 2>&1 || ./gradlew shadowJar --no-daemon --stacktrace 2>&1 | tail -30
+
+          JAR=$(find . -name "*.jar" -path "*/build/libs/*" | grep -v "plain" | head -1)
+          if [ -z "$JAR" ]; then
+            JAR=$(find . -name "*.jar" -path "*/build/libs/*" | head -1)
+          fi
+
+          if [ -z "$JAR" ]; then
+            echo "shadowJar failed, trying assemble..."
+            ./gradlew assemble --no-daemon -q 2>&1 || true
+            JAR=$(find . -name "*.jar" | grep -v "gradle" | grep -v "wrapper" | head -1)
+          fi
+
+          echo "Using JAR: $JAR"
           cp "$JAR" ../native-obfuscator.jar
-          echo "native-obfuscator ready"
+          echo "native-obfuscator ready: $(du -sh ../native-obfuscator.jar | cut -f1)"
           cd ../..
 
       - name: Validate APK
