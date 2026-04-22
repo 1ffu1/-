@@ -40,17 +40,19 @@ jobs:
 
       - name: Execute Protection (Dex2C)
         run: |
-          # التأكد من وجود ملف الـ APK
+          # التأكد من وجود ملف الـ APK في المجلد الرئيسي قبل البدء
           if [ ! -f "${{ github.event.inputs.apk_name }}" ]; then
-            echo "Error: File ${{ github.event.inputs.apk_name }} not found!"
+            echo "Error: File ${{ github.event.inputs.apk_name }} not found in root directory!"
             exit 1
           fi
           
-          # تشغيل الأداة (استخدام dcc.py هو السر هنا)
-          # خيار --الافتراضي يحمي الميثودز الأساسية، لتحويل كلي ستحتاج لملف filter (اختياري)
-          python3 dex2c_tool/dcc.py ${{ github.event.inputs.apk_name }} \
+          # الدخول لمجلد الأداة ضروري جداً لكي يقرأ السكربت ملف dcc.cfg
+          cd dex2c_tool
+          
+          # تشغيل dcc.py مع توجيه المسارات للمجلد الرئيسي (../)
+          python3 dcc.py ../${{ github.event.inputs.apk_name }} \
           --ndk ${{ env.ANDROID_NDK_HOME }} \
-          --output protected_output.apk
+          --output ../protected_output.apk
 
       - name: Upload Protected APK
         uses: actions/upload-artifact@v4
