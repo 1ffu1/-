@@ -31,34 +31,50 @@ jobs:
         mv $HOME/android/cmdline-tools/cmdline-tools $HOME/android/cmdline-tools/latest
         export ANDROID_HOME=$HOME/android
         export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-        yes | sdkmanager --licenses > /dev/null 2>&1
+        yes | sdkmanager --licenses > /dev/null 2>&1 || true
         sdkmanager "build-tools;34.0.0" > /dev/null 2>&1
         echo "ANDROID_HOME=$HOME/android" >> $GITHUB_ENV
         echo "BUILD_TOOLS=$HOME/android/build-tools/34.0.0" >> $GITHUB_ENV
         echo "$HOME/android/build-tools/34.0.0" >> $GITHUB_PATH
         echo "$HOME/android/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "✓ Android SDK OK"
 
-    - name: 🔧 تثبيت apktool و dex2jar و ProGuard
+    - name: 🔧 تثبيت apktool
       run: |
         mkdir -p $HOME/bin
-        wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool -O $HOME/bin/apktool
-        wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O $HOME/bin/apktool.jar
+        # apktool من GitHub Releases مباشرة (موثوق)
+        APKTOOL_VER="2.9.3"
+        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VER}/apktool_${APKTOOL_VER}.jar" \
+             -O $HOME/bin/apktool.jar
+        # wrapper script
+        printf '#!/bin/bash\njava -jar %s/bin/apktool.jar "$@"\n' "$HOME" > $HOME/bin/apktool
         chmod +x $HOME/bin/apktool
         echo "$HOME/bin" >> $GITHUB_PATH
+        echo "✓ apktool $APKTOOL_VER"
+
+    - name: 🔧 تثبيت dex2jar
+      run: |
         wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
         unzip -q dex-tools-v2.4.zip
         chmod +x dex-tools-v2.4/d2j-*.sh
         echo "DEX2JAR=$(pwd)/dex-tools-v2.4/d2j-dex2jar.sh" >> $GITHUB_ENV
+        echo "✓ dex2jar OK"
+
+    - name: 🔧 تثبيت ProGuard
+      run: |
         wget -q https://github.com/Guardsquare/proguard/releases/download/v7.4.2/proguard-7.4.2.zip
         unzip -q proguard-7.4.2.zip
         echo "PROGUARD_JAR=$(pwd)/proguard-7.4.2/lib/proguard.jar" >> $GITHUB_ENV
+        echo "✓ ProGuard OK"
 
     - name: 📲 الحصول على APK
       run: |
         if [ -n "${{ github.event.inputs.apk_url }}" ]; then
           wget -q "${{ github.event.inputs.apk_url }}" -O input.apk
+          echo "✓ APK من الرابط"
         elif [ -f "app.apk" ]; then
           cp app.apk input.apk
+          echo "✓ APK من المستودع"
         else
           echo "❌ ضع app.apk في المستودع أو أدخل رابطاً"
           exit 1
@@ -101,7 +117,8 @@ jobs:
     - name: 🛡️ إضافة Anti-Debug smali
       run: |
         mkdir -p apk_decoded/smali/com/sho/security
-        printf '.class public Lcom/sho/security/Guard;\n.super Ljava/lang/Object;\n.method public static isDebugging()Z\n    .locals 1\n    invoke-static {}, Landroid/os/Debug;->isDebuggerConnected()Z\n    move-result v0\n    return v0\n.end method\n' > apk_decoded/smali/com/sho/security/Guard.smali
+        printf '.class public Lcom/sho/security/Guard;\n.super Ljava/lang/Object;\n.method public static isDebugging()Z\n    .locals 1\n    invoke-static {}, Landroid/os/Debug;->isDebuggerConnected()Z\n    move-result v0\n    return v0\n.end method\n' \
+          > apk_decoded/smali/com/sho/security/Guard.smali
         echo "✓ Guard.smali مضاف"
 
     - name: 📦 إعادة تجميع APK
