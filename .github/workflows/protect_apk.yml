@@ -1,4 +1,4 @@
-name: Professional Targeted Protection (Fix Dependencies)
+name: Professional Targeted Protection (Final Dependency Fix)
 
 on:
   workflow_dispatch:
@@ -36,11 +36,11 @@ jobs:
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Setup Tools & Dependencies
+      - name: Setup Tools & Full Dependencies
         run: |
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
-          # تثبيت كل المكتبات التي تطلبها Androguard و dcc لمنع الـ ModuleNotFoundError
-          pip install pyelftools click asn1crypto cryptography
+          # تثبيت الحزمة الكاملة من التبعات لضمان عدم توقف Androguard
+          pip install pyelftools click asn1crypto cryptography lxml requests
 
       - name: Execute Targeted Hardening
         run: |
@@ -50,7 +50,7 @@ jobs:
           fi
           
           cd dex2c_tool
-          # إنشاء فلتر دقيق للباكج الخاص بك فقط لضمان الاستقرار
+          # فلتر استهداف الكود الخاص بك فقط لضمان الاستقرار الكلي
           echo "+${{ github.event.inputs.my_package }}/*" > filter.txt
           
           python3 dcc.py \
