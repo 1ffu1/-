@@ -1,4 +1,4 @@
-name: Extreme Dex2C Protection
+name: Extreme Dex2C Protection (Final Precision)
 
 on:
   workflow_dispatch:
@@ -32,13 +32,28 @@ jobs:
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Download Dex2C Tool
+      - name: Download Dex2C Tool (codehasan)
         run: |
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
           cd dex2c_tool
           pip install -r requirements.txt || pip install click pyelftools
 
-      - name: Execute Protection (Full Conversion)
+      - name: Create Precision Filter File
+        run: |
+          # استثناء كل ما تسبب في أخطاء في الصور السابقة بدقة
+          cat <<EOF > dex2c_tool/precision_filter.txt
+          -android/*
+          -androidx/*
+          -com/google/*
+          -kotlin/*
+          -kotlinx/*
+          -okhttp3/*
+          -okio/*
+          -org/xmlpull/*
+          +*
+          EOF
+
+      - name: Execute Protection
         run: |
           if [ ! -f "${{ github.event.inputs.apk_name }}" ]; then
             echo "Error: File ${{ github.event.inputs.apk_name }} not found!"
@@ -47,10 +62,11 @@ jobs:
           
           cd dex2c_tool
           
-          # تفعيل خيار --allow-global لإجبار الأداة على تحويل كامل الكود لـ Native
+          # التنفيذ باستخدام الفلتر الدقيق لمنع AssertionError
           python3 dcc.py \
           -a ../${{ github.event.inputs.apk_name }} \
           -o ../protected_output.apk \
+          --filter precision_filter.txt \
           --allow-global
           
       - name: Upload Protected APK
