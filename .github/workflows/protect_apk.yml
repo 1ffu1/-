@@ -1,0 +1,166 @@
+name: 🔐 Sho APK Protection
+
+on:
+  workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'رابط APK (اختياري - أو ارفع الملف في المستودع)'
+        required: false
+        default: ''
+
+jobs:
+  protect-apk:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+    # ─────────────────────────────────────────
+    - name: 📥 Checkout Repository
+      uses: actions/checkout@v4
+
+    # ─────────────────────────────────────────
+    - name: ☕ Setup Java
+      uses: actions/setup-java@v4
+      with:
+        distribution: 'temurin'
+        java-version: '17'
+
+    # ─────────────────────────────────────────
+    - name: 📦 تثبيت الأدوات
+      run: |
+        sudo apt-get update -q
+        sudo apt-get install -y zipalign apksigner
+
+        # apktool
+        wget -q https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool \
+             -O /usr/local/bin/apktool
+        wget -q https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar \
+             -O /usr/local/bin/apktool.jar
+        chmod +x /usr/local/bin/apktool
+
+        # dex2jar
+        wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
+        unzip -q dex-tools-v2.4.zip
+        chmod +x dex-tools-v2.4/d2j-*.sh
+
+        # ProGuard
+        wget -q https://github.com/Guardsquare/proguard/releases/download/v7.4.2/proguard-7.4.2.zip
+        unzip -q proguard-7.4.2.zip
+        echo "PROGUARD_JAR=$(pwd)/proguard-7.4.2/lib/proguard.jar" >> $GITHUB_ENV
+        echo "DEX2JAR=$(pwd)/dex-tools-v2.4/d2j-dex2jar.sh" >> $GITHUB_ENV
+
+    # ─────────────────────────────────────────
+    - name: 📲 الحصول على APK
+      run: |
+        if [ -n "${{ github.event.inputs.apk_url }}" ]; then
+          wget -q "${{ github.event.inputs.apk_url }}" -O input.apk
+          echo "APK تم تنزيله من الرابط"
+        elif [ -f "app.apk" ]; then
+          cp app.apk input.apk
+          echo "APK من المستودع"
+        else
+          echo "❌ لا يوجد APK! ضع app.apk في جذر المستودع أو أدخل رابطاً"
+          exit 1
+        fi
+        ls -lh input.apk
+
+    # ─────────────────────────────────────────
+    - name: 🔓 فك APK بـ apktool
+      run: |
+        apktool d input.apk -o apk_decoded -f
+        ls apk_decoded/
+
+    # ─────────────────────────────────────────
+    - name: 🔄 DEX -> JAR بـ dex2jar
+      run: |
+        mkdir -p jars
+        for dex in apk_decoded/*.dex; do
+          name=$(basename "$dex" .dex)
+          echo "تحويل $dex ..."
+          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null || \
+          echo "⚠ تعذّر تحويل $dex"
+        done
+        ls -lh jars/
+
+    # ─────────────────────────────────────────
+    - name: 🌀 تشويش JAR بـ ProGuard
+      run: |
+        mkdir -p obf_jars
+        for jar in jars/*.jar; do
+          name=$(basename "$jar" .jar)
+          echo "ProGuard على $name ..."
+          java -jar "$PROGUARD_JAR" \
+            -injars "$jar" \
+            -outjars "obf_jars/${name}_obf.jar" \
+            -libraryjars "<java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)" \
+            -dontoptimize \
+            -dontpreverify \
+            -repackageclasses '' \
+            -allowaccessmodification \
+            -keep "class * extends android.app.Activity" \
+            -keep "class * extends android.app.Service" \
+            -keep "class * extends android.content.BroadcastReceiver" \
+            -keepattributes "*Annotation*,Signature,Exceptions" \
+            2>/dev/null && echo "✓ $name" || echo "⚠ تعذّر $name"
+        done
+
+    # ─────────────────────────────────────────
+    - name: 🛡️ إضافة Anti-Debug في smali
+      run: |
+        mkdir -p apk_decoded/smali/com/sho/security
+        cat > apk_decoded/smali/com/sho/security/Guard.smali << 'EOF'
+        .class public Lcom/sho/security/Guard;
+        .super Ljava/lang/Object;
+        .method public static isDebugging()Z
+            .locals 1
+            invoke-static {}, Landroid/os/Debug;->isDebuggerConnected()Z
+            move-result v0
+            return v0
+        .end method
+        EOF
+        echo "✓ Guard.smali مضاف"
+
+    # ─────────────────────────────────────────
+    - name: 📦 إعادة تجميع APK بـ apktool
+      run: |
+        apktool b apk_decoded -o sho_rebuilt.apk
+        ls -lh sho_rebuilt.apk
+
+    # ─────────────────────────────────────────
+    - name: 🗝️ إنشاء Keystore وتوقيع APK
+      run: |
+        # إنشاء keystore
+        keytool -genkeypair -v \
+          -keystore sho_release.keystore \
+          -alias sho_key \
+          -keyalg RSA -keysize 2048 -validity 10000 \
+          -storepass "${{ secrets.KEYSTORE_PASS || 'sho_secure_2025' }}" \
+          -keypass   "${{ secrets.KEYSTORE_PASS || 'sho_secure_2025' }}" \
+          -dname "CN=Sho, OU=Dev, O=Sho, L=SA, ST=Riyadh, C=SA"
+
+        # zipalign
+        zipalign -v 4 sho_rebuilt.apk sho_aligned.apk
+
+        # توقيع
+        apksigner sign \
+          --ks sho_release.keystore \
+          --ks-pass pass:"${{ secrets.KEYSTORE_PASS || 'sho_secure_2025' }}" \
+          --key-pass pass:"${{ secrets.KEYSTORE_PASS || 'sho_secure_2025' }}" \
+          --out sho_protected_signed.apk \
+          sho_aligned.apk
+
+        echo "✓ APK موقّع"
+        ls -lh sho_protected_signed.apk
+
+    # ─────────────────────────────────────────
+    - name: 🔍 التحقق من التوقيع
+      run: |
+        apksigner verify --verbose sho_protected_signed.apk
+
+    # ─────────────────────────────────────────
+    - name: 📤 رفع APK المحمية كـ Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: sho-protected-apk
+        path: sho_protected_signed.apk
+        retention-days: 7
