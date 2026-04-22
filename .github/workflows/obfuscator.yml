@@ -1,172 +1,166 @@
-name: Advanced Protected APK
+name: APK Native Obfuscator
 
 on:
   workflow_dispatch:
+    inputs:
+      apk_url:
+        description: 'Direct URL to the APK file'
+        required: true
+        type: string
 
 jobs:
-  build:
+  native-obfuscate:
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout
+      - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup Java 17
         uses: actions/setup-java@v4
         with:
-          distribution: temurin
-          java-version: 17
+          distribution: 'temurin'
+          java-version: '17'
 
-      - name: Setup NDK
-        id: ndk_unique_id
+      - name: Setup Android NDK r26d
         uses: nttld/setup-ndk@v1
+        id: setup-ndk
         with:
           ndk-version: r26d
 
+      - name: Download input APK
+        run: |
+          curl -L -o input.apk "${{ github.event.inputs.apk_url }}"
+
       - name: Install dependencies
         run: |
-          sudo apt update
-          sudo apt install -y wget unzip git zip cmake ninja-build python3
+          sudo apt-get update
+          sudo apt-get install -y unzip zip python3
 
-      - name: Prepare APK
-        run: cp input/app.apk input.apk
-
-      - name: Download apktool
-        run: wget https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar -O apktool.jar
-
-      - name: Decode APK
-        run: java -jar apktool.jar d input.apk -o apk_decoded
-
-      - name: Extract DEX
+      - name: Download and setup dex2jar
         run: |
-          unzip -o input.apk -d extracted
-          mkdir dex
-          find extracted -name "classes*.dex" -exec cp {} dex/ \;
+          curl -L -o dex2jar.zip https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex2jar-2.4.zip
+          unzip -q dex2jar.zip
+          mv dex2jar-2.4 dex2jar
+          chmod +x dex2jar/*.sh
 
-      - name: Clone native-obfuscator
-        run: git clone https://github.com/radioegor146/native-obfuscator.git
-
-      - name: Fix shadowJar issue
+      - name: Download and setup apktool
         run: |
-          echo "" >> native-obfuscator/obfuscator/build.gradle
-          echo "tasks.withType(com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar).configureEach {" >> native-obfuscator/obfuscator/build.gradle
-          echo "    mergeServiceFiles()" >> native-obfuscator/obfuscator/build.gradle
-          echo "    exclude 'META-INF/*.SF'" >> native-obfuscator/obfuscator/build.gradle
-          echo "    exclude 'META-INF/*.DSA'" >> native-obfuscator/obfuscator/build.gradle
-          echo "    exclude 'META-INF/*.RSA'" >> native-obfuscator/obfuscator/build.gradle
-          echo "    duplicatesStrategy = DuplicatesStrategy.EXCLUDE" >> native-obfuscator/obfuscator/build.gradle
-          echo "}" >> native-obfuscator/obfuscator/build.gradle
+          curl -L -o apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
+          curl -L -o apktool https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool
+          chmod +x apktool
+          mkdir -p $HOME/bin
+          mv apktool $HOME/bin/
+          mv apktool.jar $HOME/bin/
+          echo "$HOME/bin" >> $GITHUB_PATH
 
-      - name: Build obfuscator
+      - name: Download and setup Android SDK Build Tools for apksigner
         run: |
+          mkdir -p $HOME/android-sdk/cmdline-tools
+          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
+          mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
+          export ANDROID_HOME=$HOME/android-sdk
+          export PATH=$ANDROID_HOME/cmdline-tools/latest/bin:$PATH
+          yes | sdkmanager --licenses || true
+          sdkmanager "build-tools;34.0.0"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
+          echo "$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_PATH
+
+      - name: Extract DEX from APK using dex2jar
+        run: |
+          mkdir -p dex_output
+          ./dex2jar/d2j-dex2jar.sh -o dex_output/classes.jar input.apk
+
+      - name: Clone and build native-obfuscator
+        run: |
+          git clone https://github.com/radioegor146/native-obfuscator.git
           cd native-obfuscator
-          ./gradlew build shadowJar
 
-      - name: Select JAR
-        run: |
-          cd native-obfuscator/obfuscator/build/libs
-          JAR=$(ls -S *.jar | grep -v plain | head -n 1)
-          echo "JAR=$JAR" >> $GITHUB_ENV
-
-      - name: Install dex2jar
-        run: |
-          wget https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-2.4.zip
-          unzip dex-tools-2.4.zip
-          chmod +x dex-tools-2.4/*.sh
-
-      - name: Convert DEX to JAR
-        run: |
-          mkdir jars
-          for f in dex/*.dex; do
-            dex-tools-2.4/d2j-dex2jar.sh "$f" -o jars/$(basename "$f").jar || true
-          done
-
-      - name: Run obfuscator
-        run: |
-          mkdir cpp
-          for f in jars/*.jar; do
-            java -jar native-obfuscator/obfuscator/build/libs/$JAR "$f" cpp || true
-          done
-
-      - name: Add anti-debug C++
-        run: |
-          echo '#include <jni.h>' >> cpp/protect.cpp
-          echo '#include <stdio.h>' >> cpp/protect.cpp
-          echo '#include <string.h>' >> cpp/protect.cpp
-          echo 'extern "C" JNIEXPORT jboolean JNICALL Java_com_protect_Check_verify(JNIEnv* env, jobject thiz) {' >> cpp/protect.cpp
-          echo 'FILE* f = fopen("/proc/self/status","r");' >> cpp/protect.cpp
-          echo 'if (!f) return JNI_TRUE;' >> cpp/protect.cpp
-          echo 'char line[256];' >> cpp/protect.cpp
-          echo 'while (fgets(line,sizeof(line),f)) {' >> cpp/protect.cpp
-          echo 'if (strstr(line,"TracerPid")) {' >> cpp/protect.cpp
-          echo 'if (strcmp(line,"TracerPid:\t0\n") != 0) {' >> cpp/protect.cpp
-          echo 'fclose(f); return JNI_FALSE; }}}' >> cpp/protect.cpp
-          echo 'fclose(f); return JNI_TRUE; }' >> cpp/protect.cpp
-
-      - name: Build arm64
-        run: |
-          mkdir build
-          cd build
-          cmake ../cpp \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-21 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
-          cmake --build .
-          mkdir -p ../libs/arm64-v8a
-          find . -name "*.so" -exec cp {} ../libs/arm64-v8a/ \;
-
-      - name: Build armeabi
-        run: |
-          rm -rf build/*
-          cd build
-          cmake ../cpp \
-            -DANDROID_ABI=armeabi-v7a \
-            -DANDROID_PLATFORM=android-21 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE=$ANDROID_NDK_HOME/build/cmake/android.toolchain.cmake
-          cmake --build .
-          mkdir -p ../libs/armeabi-v7a
-          find . -name "*.so" -exec cp {} ../libs/armeabi-v7a/ \;
-
-      - name: Remove DEX
-        run: rm apk_decoded/classes*.dex || true
-
-      - name: Add SO
-        run: |
-          mkdir -p apk_decoded/lib/arm64-v8a
-          mkdir -p apk_decoded/lib/armeabi-v7a
-          cp libs/arm64-v8a/*.so apk_decoded/lib/arm64-v8a/ || true
-          cp libs/armeabi-v7a/*.so apk_decoded/lib/armeabi-v7a/ || true
-
-      - name: Force load library
+      - name: Fix ShadowJar META-INF issue in native-obfuscator
         run: |
           python3 -c "
-import os
-for root, dirs, files in os.walk('apk_decoded/smali'):
-    for f in files:
-        if f.endswith('.smali'):
-            p=os.path.join(root,f)
-            d=open(p).read()
-            if 'loadLibrary' not in d:
-                d=d.replace('.method public constructor <init>()V',
-                '.method public constructor <init>()V\n    const-string v0, \"protect\"\n    invoke-static {v0}, Ljava/lang/System;->loadLibrary(Ljava/lang/String;)V')
-                open(p,'w').write(d)
-                break
-"
+          import os
+          build_file = 'native-obfuscator/obfuscator/build.gradle'
+          with open(build_file, 'a') as f:
+              f.write('\n')
+              f.write('tasks.withType(com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar).configureEach {\n')
+              f.write('    mergeServiceFiles()\n')
+              f.write(\"    exclude 'META-INF/*.SF'\\n\")
+              f.write(\"    exclude 'META-INF/*.DSA'\\n\")
+              f.write(\"    exclude 'META-INF/*.RSA'\\n\")
+              f.write('    duplicatesStrategy = DuplicatesStrategy.EXCLUDE\n')
+              f.write('}\n')
+          "
 
-      - name: Rebuild APK
-        run: java -jar apktool.jar b apk_decoded -o unsigned.apk
-
-      - name: Sign APK
+      - name: Build native-obfuscator with Gradle
         run: |
-          wget https://dl.google.com/android/repository/build-tools_r34-linux.zip
-          unzip build-tools_r34-linux.zip
-          keytool -genkey -v -keystore key.jks -storepass 123456 -alias key -keypass 123456 -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=App,O=App,C=US"
-          build-tools/android-34/apksigner sign --ks key.jks --ks-pass pass:123456 --key-pass pass:123456 --out final.apk unsigned.apk
+          cd native-obfuscator
+          ./gradlew :obfuscator:shadowJar --no-daemon
 
-      - name: Upload APK
+      - name: Select correct native-obfuscator JAR
+        id: select-jar
+        run: |
+          JAR_PATH=$(ls -S native-obfuscator/obfuscator/build/libs/*.jar | grep -v plain | head -n 1)
+          echo "jar_path=$JAR_PATH" >> $GITHUB_OUTPUT
+          echo "Selected JAR: $JAR_PATH"
+          ls -lh "$JAR_PATH"
+
+      - name: Run native-obfuscator on classes.jar
+        run: |
+          mkdir -p cpp_output
+          java -jar "${{ steps.select-jar.outputs.jar_path }}" dex_output/classes.jar cpp_output
+
+      - name: Prepare CMake toolchain and build script for NDK
+        run: |
+          cat > build_so.sh << 'BUILD_EOF'
+          #!/bin/bash
+          set -e
+          NDK_PATH="${{ steps.setup-ndk.outputs.ndk-path }}"
+          ABI=$1
+          BUILD_DIR="build_$ABI"
+          mkdir -p "$BUILD_DIR"
+          cmake -S cpp_output -B "$BUILD_DIR" \
+            -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
+            -DANDROID_ABI="$ABI" \
+            -DANDROID_PLATFORM=android-21 \
+            -DCMAKE_BUILD_TYPE=Release
+          cmake --build "$BUILD_DIR" --parallel $(nproc)
+          BUILD_EOF
+          chmod +x build_so.sh
+
+      - name: Build native libraries for arm64-v8a
+        run: |
+          ./build_so.sh arm64-v8a
+
+      - name: Build native libraries for armeabi-v7a
+        run: |
+          ./build_so.sh armeabi-v7a
+
+      - name: Decompile APK with apktool
+        run: |
+          apktool d -o decompiled_apk -f input.apk
+
+      - name: Replace DEX with native libraries in decompiled APK
+        run: |
+          rm -rf decompiled_apk/*.dex
+          mkdir -p decompiled_apk/lib/arm64-v8a
+          mkdir -p decompiled_apk/lib/armeabi-v7a
+          cp build_arm64-v8a/*.so decompiled_apk/lib/arm64-v8a/ || true
+          cp build_armeabi-v7a/*.so decompiled_apk/lib/armeabi-v7a/ || true
+
+      - name: Rebuild APK with apktool
+        run: |
+          apktool b -o unsigned.apk decompiled_apk
+
+      - name: Sign APK with apksigner
+        run: |
+          keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          apksigner sign --ks debug.keystore --ks-pass pass:android --key-pass pass:android --out signed_obfuscated.apk unsigned.apk
+
+      - name: Upload obfuscated APK as artifact
         uses: actions/upload-artifact@v4
         with:
-          name: protected-apk
-          path: final.apk
+          name: obfuscated-apk
+          path: signed_obfuscated.apk
+          retention-days: 7
