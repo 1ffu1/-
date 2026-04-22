@@ -129,21 +129,12 @@ jobs:
         find native_output -name "*.h"   -exec cp {} jni_build/jni/ \;
 
         # Android.mk
-        cat > jni_build/jni/Android.mk << 'ANDROIDMK'
-LOCAL_PATH := $(call my-dir)
-include $(CLEAR_VARS)
-LOCAL_MODULE    := sho_native
-LOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)
-LOCAL_LDLIBS    := -llog -landroid
-include $(BUILD_SHARED_LIBRARY)
-ANDROIDMK
+        printf 'LOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE    := sho_native\nLOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)\nLOCAL_LDLIBS    := -llog -landroid\ninclude $(BUILD_SHARED_LIBRARY)\n' \
+          > jni_build/jni/Android.mk
 
-        # Application.mk - نبني لـ arm64 + armeabi
-        cat > jni_build/jni/Application.mk << 'APPMK'
-APP_ABI := arm64-v8a armeabi-v7a
-APP_STL := c++_shared
-APP_OPTIM := release
-APPMK
+        # Application.mk
+        printf 'APP_ABI := arm64-v8a armeabi-v7a\nAPP_STL := c++_shared\nAPP_OPTIM := release\n' \
+          > jni_build/jni/Application.mk
 
         # بناء المكتبات
         cd jni_build
