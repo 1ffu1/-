@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       apk_url:
-        description: 'رابط APK (اختياري - أو ضع app.apk في المستودع)'
+        description: 'رابط APK (اختياري)'
         required: false
         default: ''
 
@@ -14,19 +14,16 @@ jobs:
     timeout-minutes: 60
 
     steps:
-    # ─────────────────────────────────────────
     - name: 📥 Checkout
       uses: actions/checkout@v4
 
-    # ─────────────────────────────────────────
     - name: ☕ Setup Java 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    # ─────────────────────────────────────────
-    - name: 📱 Setup Android NDK + SDK
+    - name: 📱 Setup Android SDK
       uses: android-actions/setup-android@v3
 
     - name: 🔩 تثبيت NDK 25
@@ -35,41 +32,40 @@ jobs:
         echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
         echo "BUILD_TOOLS=$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_ENV
         echo "$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_PATH
-        echo "✓ NDK: $ANDROID_HOME/ndk/25.2.9519653"
+        echo "✓ NDK OK"
 
-    # ─────────────────────────────────────────
     - name: 🔧 تثبيت apktool
       run: |
         mkdir -p $HOME/bin
-        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" \
-             -O $HOME/bin/apktool.jar
+        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -O $HOME/bin/apktool.jar
         printf '#!/bin/bash\njava -jar %s/bin/apktool.jar "$@"\n' "$HOME" > $HOME/bin/apktool
         chmod +x $HOME/bin/apktool
         echo "$HOME/bin" >> $GITHUB_PATH
-        echo "✓ apktool OK"
 
-    # ─────────────────────────────────────────
-    - name: 🔧 تثبيت dex2jar
+    - name: 🔧 تثبيت dex2jar + jar2dex (enjarify)
       run: |
+        # dex2jar
         wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
         unzip -q dex-tools-v2.4.zip
         chmod +x dex-tools-v2.4/d2j-*.sh
         echo "DEX2JAR=$(pwd)/dex-tools-v2.4/d2j-dex2jar.sh" >> $GITHUB_ENV
-        echo "✓ dex2jar OK"
+        echo "JAR2DEX=$(pwd)/dex-tools-v2.4/d2j-jar2dex.sh" >> $GITHUB_ENV
+        # d8 لتحويل JAR->DEX
+        echo "D8=$ANDROID_HOME/build-tools/34.0.0/d8" >> $GITHUB_ENV
+        echo "✓ dex tools OK"
 
-    # ─────────────────────────────────────────
-    - name: 🔧 تثبيت native-obfuscator
+    - name: 🧬 تثبيت native-obfuscator
       run: |
         git clone --depth=1 https://github.com/radioegor146/native-obfuscator.git
         cd native-obfuscator
         chmod +x gradlew
-        ./gradlew jar -x test --no-daemon -q 2>/dev/null || ./gradlew shadowJar -x test --no-daemon -q
-        # البحث عن الـ jar الناتج
-        JAR=$(find . -name "*.jar" -path "*/build/libs/*" | grep -v sources | head -1)
-        echo "NATIVE_OBF_JAR=$(pwd)/$JAR" >> $GITHUB_ENV
+        ./gradlew shadowJar -x test --no-daemon -q 2>/dev/null || \
+        ./gradlew jar -x test --no-daemon -q 2>/dev/null
+        JAR=$(find . -name "*.jar" -path "*/build/libs/*" | grep -v sources | grep -v plain | head -1)
+        [ -z "$JAR" ] && JAR=$(find . -name "*.jar" -path "*/build/libs/*" | head -1)
+        echo "NATIVE_OBF_JAR=$(realpath $JAR)" >> $GITHUB_ENV
         echo "✓ native-obfuscator: $JAR"
 
-    # ─────────────────────────────────────────
     - name: 📲 الحصول على APK
       run: |
         if [ -n "${{ github.event.inputs.apk_url }}" ]; then
@@ -82,131 +78,126 @@ jobs:
         fi
         ls -lh input.apk
 
-    # ─────────────────────────────────────────
     - name: 🔓 فك APK بـ apktool
       run: |
         $HOME/bin/apktool d input.apk -o apk_decoded -f
-        echo "✓ DEX files:"
-        ls -lh apk_decoded/*.dex 2>/dev/null || find apk_decoded -name "*.dex"
+        echo "DEX files:"
+        ls -lh apk_decoded/*.dex
 
-    # ─────────────────────────────────────────
-    - name: 🔄 DEX -> JAR بـ dex2jar
+    # ═══════════════════════════════════════════════════
+    # الخطوة الجوهرية: DEX -> JAR -> native-obfuscator
+    # native-obfuscator يُنتج:
+    #   1. JAR جديد (stubs فقط تستدعي .so)
+    #   2. مجلد cpp/ فيه الكود الحقيقي بـ C++
+    # ═══════════════════════════════════════════════════
+    - name: 🧬 تحويل DEX -> JAR -> C++ (native-obfuscator)
       run: |
-        mkdir -p jars
-        # نحوّل classes.dex الرئيسي فقط (كود التطبيق)
-        # classes2+ عادةً مكتبات خارجية لا حاجة لتحويلها
+        mkdir -p jars obf_output cpp_all
+
+        # نحوّل classes.dex فقط (كود التطبيق الرئيسي)
+        # classes2 فما فوق = مكتبات خارجية، نتركها DEX
         for dex in apk_decoded/classes.dex apk_decoded/classes2.dex; do
           [ -f "$dex" ] || continue
           name=$(basename "$dex" .dex)
-          echo "→ تحويل $name ..."
-          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null \
-            && echo "  ✓ $name.jar" || echo "  ⚠ تعذّر $name"
-        done
-        ls -lh jars/
+          echo "━━━ معالجة $name ━━━"
 
-    # ─────────────────────────────────────────
-    - name: 🧬 تحويل JAR -> C++ بـ native-obfuscator
-      run: |
-        mkdir -p native_output
-        for jar in jars/*.jar; do
-          name=$(basename "$jar" .jar)
-          echo "→ native-obfuscator على $name ..."
+          # DEX -> JAR
+          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null
+          [ -f "jars/${name}.jar" ] || { echo "⚠ تعذّر تحويل $name"; continue; }
+          echo "✓ $name.jar: $(du -sh jars/${name}.jar | cut -f1)"
+
+          # JAR -> native-obfuscator
+          # native-obfuscator يأخذ: input.jar output_dir
+          mkdir -p "obf_output/$name"
           java -jar "$NATIVE_OBF_JAR" \
-            "$jar" \
-            "native_output/${name}" \
-            2>/dev/null && echo "  ✓ $name" || echo "  ⚠ تعذّر $name"
-        done
-        echo "✓ ملفات C++ المولّدة:"
-        find native_output -name "*.cpp" | head -20
-        echo "المجموع: $(find native_output -name "*.cpp" | wc -l) ملف C++"
+            "jars/${name}.jar" \
+            "obf_output/$name" \
+            2>/dev/null && echo "✓ obfuscated $name" || echo "⚠ جزئي $name"
 
-    # ─────────────────────────────────────────
+          # الـ output يحتوي على:
+          # obf_output/name/output.jar  -> JAR جديد بـ stubs
+          # obf_output/name/cpp/        -> ملفات C++
+          ls "obf_output/$name/" 2>/dev/null
+
+          # تجميع ملفات C++ في مكان واحد
+          find "obf_output/$name" -name "*.cpp" -exec cp {} cpp_all/ \; 2>/dev/null
+          find "obf_output/$name" -name "*.h"   -exec cp {} cpp_all/ \; 2>/dev/null
+        done
+
+        echo "ملفات C++ المولّدة: $(ls cpp_all/*.cpp 2>/dev/null | wc -l)"
+
     - name: ⚙️ تجميع C++ -> .so بـ NDK
       run: |
-        mkdir -p jni_build/jni
-        # نسخ كل ملفات C++ إلى مجلد JNI
-        find native_output -name "*.cpp" -exec cp {} jni_build/jni/ \;
-        find native_output -name "*.h"   -exec cp {} jni_build/jni/ \;
+        mkdir -p jni_project/jni
+        cp cpp_all/*.cpp jni_project/jni/ 2>/dev/null || true
+        cp cpp_all/*.h   jni_project/jni/ 2>/dev/null || true
 
         # Android.mk
-        printf 'LOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE    := sho_native\nLOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)\nLOCAL_LDLIBS    := -llog -landroid\ninclude $(BUILD_SHARED_LIBRARY)\n' \
-          > jni_build/jni/Android.mk
+        printf 'LOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := sho_native\nLOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)\nLOCAL_LDLIBS := -llog -landroid\ninclude $(BUILD_SHARED_LIBRARY)\n' \
+          > jni_project/jni/Android.mk
 
         # Application.mk
         printf 'APP_ABI := arm64-v8a armeabi-v7a\nAPP_STL := c++_shared\nAPP_OPTIM := release\n' \
-          > jni_build/jni/Application.mk
+          > jni_project/jni/Application.mk
 
-        # بناء المكتبات
-        cd jni_build
-        $NDK_HOME/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk -j$(nproc) 2>/dev/null
-        echo "✓ .so files:"
-        find libs -name "*.so" -exec ls -lh {} \;
+        cd jni_project
+        $NDK_HOME/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk -j$(nproc) 2>/dev/null || true
 
-    # ─────────────────────────────────────────
-    - name: 📦 دمج .so في APK
+        echo ".so files:"
+        find libs -name "*.so" -exec ls -lh {} \; 2>/dev/null || echo "⚠ لا .so - سنستخدم ProGuard فقط"
+
+    # ═══════════════════════════════════════════════════
+    # استبدال DEX بالـ JAR الجديد (stubs) + إضافة .so
+    # هذه هي الخطوة التي كانت ناقصة سابقاً
+    # ═══════════════════════════════════════════════════
+    - name: 🔄 استبدال DEX القديم بـ stubs + إضافة .so
       run: |
-        # إنشاء مجلدات lib في APK المفكوك
-        mkdir -p apk_decoded/lib/arm64-v8a
-        mkdir -p apk_decoded/lib/armeabi-v7a
+        # 1. استبدال DEX بالـ JAR المعدّل من native-obfuscator
+        for name in classes classes2; do
+          STUB_JAR=$(find "obf_output/$name" -name "*.jar" 2>/dev/null | head -1)
+          [ -f "$STUB_JAR" ] || continue
+          echo "→ تحويل stub JAR -> DEX لـ $name ..."
+          # استخدام d8 لتحويل JAR -> DEX
+          $D8 --output dex_out_${name}/ "$STUB_JAR" 2>/dev/null && \
+          cp dex_out_${name}/classes.dex apk_decoded/${name}.dex && \
+          echo "  ✓ استُبدل ${name}.dex بـ stubs" || \
+          echo "  ⚠ تعذّر استبدال ${name}.dex"
+        done
 
-        # نسخ المكتبات
-        cp jni_build/libs/arm64-v8a/*.so   apk_decoded/lib/arm64-v8a/  2>/dev/null || true
-        cp jni_build/libs/armeabi-v7a/*.so apk_decoded/lib/armeabi-v7a/ 2>/dev/null || true
+        # 2. إضافة مكتبات .so
+        mkdir -p apk_decoded/lib/arm64-v8a apk_decoded/lib/armeabi-v7a
+        cp jni_project/libs/arm64-v8a/*.so   apk_decoded/lib/arm64-v8a/  2>/dev/null || true
+        cp jni_project/libs/armeabi-v7a/*.so apk_decoded/lib/armeabi-v7a/ 2>/dev/null || true
 
-        # إبقاء DEX المحوّل فقط (الأصلي بعد تعديل native-obfuscator)
-        # native-obfuscator يولّد DEX جديد يستدعي الـ .so
-        find native_output -name "*.dex" -exec cp {} apk_decoded/ \; 2>/dev/null || true
+        echo "✓ DEX المتبقي في APK:"
+        ls -lh apk_decoded/*.dex
+        echo "✓ SO libraries:"
+        find apk_decoded/lib -name "*.so" 2>/dev/null | xargs ls -lh 2>/dev/null || echo "لا .so"
 
-        echo "✓ محتوى lib:"
-        ls -lh apk_decoded/lib/arm64-v8a/
-        ls -lh apk_decoded/lib/armeabi-v7a/
-
-    # ─────────────────────────────────────────
     - name: 🏗️ إعادة تجميع APK
       run: |
         $HOME/bin/apktool b apk_decoded -o sho_rebuilt.apk
         ls -lh sho_rebuilt.apk
 
-    # ─────────────────────────────────────────
     - name: 🗝️ توقيع APK
       run: |
         PASS="${{ secrets.KEYSTORE_PASS }}"
         [ -z "$PASS" ] && PASS="sho_secure_2025"
-
         keytool -genkeypair -v \
           -keystore sho.keystore -alias sho_key \
           -keyalg RSA -keysize 2048 -validity 10000 \
           -storepass "$PASS" -keypass "$PASS" \
           -dname "CN=Sho,OU=Dev,O=Sho,L=SA,ST=Riyadh,C=SA" 2>/dev/null
-
         $BUILD_TOOLS/zipalign -v 4 sho_rebuilt.apk sho_aligned.apk
-
         $BUILD_TOOLS/apksigner sign \
           --ks sho.keystore \
           --ks-pass pass:"$PASS" \
           --key-pass pass:"$PASS" \
           --out sho_protected_signed.apk \
           sho_aligned.apk
-
         $BUILD_TOOLS/apksigner verify --verbose sho_protected_signed.apk
-        echo "✓ APK موقّع ومحمي"
         ls -lh sho_protected_signed.apk
 
-    # ─────────────────────────────────────────
-    - name: 📊 تقرير الحماية
-      run: |
-        echo "════════════════════════════════"
-        echo "  تقرير حماية Sho APK"
-        echo "════════════════════════════════"
-        echo "DEX files في APK الجديد:"
-        find apk_decoded -name "*.dex" | wc -l
-        echo "SO libraries:"
-        find apk_decoded/lib -name "*.so" 2>/dev/null | wc -l
-        echo "حجم APK النهائي:"
-        ls -lh sho_protected_signed.apk
-        echo "════════════════════════════════"
-
-    # ─────────────────────────────────────────
     - name: 📤 رفع APK المحمية
       uses: actions/upload-artifact@v4
       with:
