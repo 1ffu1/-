@@ -32,15 +32,14 @@ jobs:
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Download Dex2C Tool (codehasan)
+      - name: Download Dex2C Tool
         run: |
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
           cd dex2c_tool
           pip install -r requirements.txt || pip install click pyelftools
 
-      - name: Execute Protection (Dex2C)
+      - name: Execute Protection (Full Conversion)
         run: |
-          # فحص وجود الملف
           if [ ! -f "${{ github.event.inputs.apk_name }}" ]; then
             echo "Error: File ${{ github.event.inputs.apk_name }} not found!"
             exit 1
@@ -48,13 +47,11 @@ jobs:
           
           cd dex2c_tool
           
-          # التصحيح: استخدام -a للمدخل و -o للمخرج كما هو مطلوب في الـ Usage
-          # قمت بإضافة بيئة الـ NDK للأمر مباشرة لضمان التعرف عليها
-          export ANDROID_NDK_HOME=${{ env.ANDROID_NDK_HOME }}
-          
+          # تفعيل خيار --allow-global لإجبار الأداة على تحويل كامل الكود لـ Native
           python3 dcc.py \
           -a ../${{ github.event.inputs.apk_name }} \
-          -o ../protected_output.apk
+          -o ../protected_output.apk \
+          --allow-global
           
       - name: Upload Protected APK
         uses: actions/upload-artifact@v4
