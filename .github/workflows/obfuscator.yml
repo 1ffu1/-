@@ -30,7 +30,7 @@ jobs:
 
       - name: Download input APK
         run: |
-          curl -L -o input.apk "${{ github.event.inputs.apk_url }}"
+          curl -fsSL -o input.apk "${{ github.event.inputs.apk_url }}"
 
       - name: Install dependencies
         run: |
@@ -39,15 +39,15 @@ jobs:
 
       - name: Download and setup dex2jar
         run: |
-          curl -L -o dex2jar.zip https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex2jar-2.4.zip
+          curl -fsSL -o dex2jar.zip https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
           unzip -q dex2jar.zip
-          mv dex2jar-2.4 dex2jar
-          chmod +x dex2jar/*.sh
+          mv dex-tools-2.4 dex2jar
+          chmod +x dex2jar/bin/*.sh
 
       - name: Download and setup apktool
         run: |
-          curl -L -o apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
-          curl -L -o apktool https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool
+          curl -fsSL -o apktool.jar https://bitbucket.org/iBotPeaches/apktool/downloads/apktool_2.9.3.jar
+          curl -fsSL -o apktool https://raw.githubusercontent.com/iBotPeaches/Apktool/master/scripts/linux/apktool
           chmod +x apktool
           mkdir -p $HOME/bin
           mv apktool $HOME/bin/
@@ -57,7 +57,7 @@ jobs:
       - name: Download and setup Android SDK Build Tools for apksigner
         run: |
           mkdir -p $HOME/android-sdk/cmdline-tools
-          curl -L -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          curl -fsSL -o cmdline-tools.zip https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
           unzip -q cmdline-tools.zip -d $HOME/android-sdk/cmdline-tools
           mv $HOME/android-sdk/cmdline-tools/cmdline-tools $HOME/android-sdk/cmdline-tools/latest
           export ANDROID_HOME=$HOME/android-sdk
@@ -70,12 +70,11 @@ jobs:
       - name: Extract DEX from APK using dex2jar
         run: |
           mkdir -p dex_output
-          ./dex2jar/d2j-dex2jar.sh -o dex_output/classes.jar input.apk
+          ./dex2jar/bin/d2j-dex2jar.sh -o dex_output/classes.jar input.apk
 
-      - name: Clone and build native-obfuscator
+      - name: Clone native-obfuscator
         run: |
           git clone https://github.com/radioegor146/native-obfuscator.git
-          cd native-obfuscator
 
       - name: Fix ShadowJar META-INF issue in native-obfuscator
         run: |
