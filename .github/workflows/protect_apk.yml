@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Your Code
         uses: actions/checkout@v4
 
       - name: Set up JDK 17
@@ -32,17 +32,23 @@ jobs:
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Clone Dex2C Tool (dcc)
+      - name: Download Dex2C Tool
+        uses: actions/checkout@v4
+        with:
+          repository: D-Code/dex2c
+          path: dex2c_tool
+
+      - name: Install Dependencies
         run: |
-          git clone --depth 1 https://github.com/r0ysue/dcc.git
-          cd dcc
-          pip install -r requirements.txt
+          if [ -f dex2c_tool/requirements.txt ]; then
+            pip install -r dex2c_tool/requirements.txt
+          fi
+          pip install click  # أداة dex2c الأساسية تحتاج هذه المكتبة
 
       - name: Execute Protection (Dex2C)
         run: |
-          # تشغيل أداة التحويل على الملف المرفوع
-          # سيتم تحويل الميثودز إلى كود C++ وتجميعها في ملف .so
-          python3 dcc/dcc.py ${{ github.event.inputs.apk_name }} \
+          # تأكد أن ملف الـ APK موجود في المجلد الرئيسي
+          python3 dex2c_tool/dex2c.py ${{ github.event.inputs.apk_name }} \
           --ndk ${{ env.ANDROID_NDK_HOME }} \
           --output protected_output.apk
 
