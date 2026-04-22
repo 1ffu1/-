@@ -1,4 +1,4 @@
-name: Extreme Dex2C Protection (Final Precision)
+name: Extreme Dex2C Protection (Final Fixed)
 
 on:
   workflow_dispatch:
@@ -40,17 +40,18 @@ jobs:
 
       - name: Create Precision Filter File
         run: |
-          # استثناء كل ما تسبب في أخطاء في الصور السابقة بدقة
+          # تصحيح الـ Regex: استخدام .* بدلاً من * لمنع خطأ PatternError
+          # ملاحظة: يجب ألا تكون هناك مسافات بادئة داخل ملف الفلتر
           cat <<EOF > dex2c_tool/precision_filter.txt
-          -android/*
-          -androidx/*
-          -com/google/*
-          -kotlin/*
-          -kotlinx/*
-          -okhttp3/*
-          -okio/*
-          -org/xmlpull/*
-          +*
+          -android/.*
+          -androidx/.*
+          -com/google/.*
+          -kotlin/.*
+          -kotlinx/.*
+          -okhttp3/.*
+          -okio/.*
+          -org/xmlpull/.*
+          +.*
           EOF
 
       - name: Execute Protection
@@ -62,7 +63,7 @@ jobs:
           
           cd dex2c_tool
           
-          # التنفيذ باستخدام الفلتر الدقيق لمنع AssertionError
+          # التنفيذ مع التأكد من المسارات
           python3 dcc.py \
           -a ../${{ github.event.inputs.apk_name }} \
           -o ../protected_output.apk \
