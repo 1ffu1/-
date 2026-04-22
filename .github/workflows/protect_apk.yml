@@ -1,4 +1,4 @@
-name: Professional Targeted Protection (Final Dependency Fix)
+name: Professional Targeted Protection (Full Graph Support)
 
 on:
   workflow_dispatch:
@@ -36,11 +36,12 @@ jobs:
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Setup Tools & Full Dependencies
+      - name: Setup Tools & Comprehensive Dependencies
         run: |
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
-          # تثبيت الحزمة الكاملة من التبعات لضمان عدم توقف Androguard
-          pip install pyelftools click asn1crypto cryptography lxml requests
+          # تثبيت كافة المكتبات الأساسية والفرعية لمحرك تحليل الأندرويد
+          # أضفنا networkx لحل مشكلة تحليل الرسوم البيانية للكود
+          pip install pyelftools click asn1crypto cryptography lxml requests networkx
 
       - name: Execute Targeted Hardening
         run: |
@@ -50,7 +51,7 @@ jobs:
           fi
           
           cd dex2c_tool
-          # فلتر استهداف الكود الخاص بك فقط لضمان الاستقرار الكلي
+          # حماية الكود المصدري الخاص بك مع استقرار المكتبات العامة
           echo "+${{ github.event.inputs.my_package }}/*" > filter.txt
           
           python3 dcc.py \
