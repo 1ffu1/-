@@ -37,22 +37,21 @@ jobs:
     - name: 🔧 تثبيت apktool
       run: |
         mkdir -p $HOME/bin
-        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -O $HOME/bin/apktool.jar
+        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" \
+             -O $HOME/bin/apktool.jar
         printf '#!/bin/bash\njava -jar %s/bin/apktool.jar "$@"\n' "$HOME" > $HOME/bin/apktool
         chmod +x $HOME/bin/apktool
         echo "$HOME/bin" >> $GITHUB_PATH
+        echo "✓ apktool OK"
 
-    - name: 🔧 تثبيت dex2jar + jar2dex (enjarify)
+    - name: 🔧 تثبيت dex2jar
       run: |
-        # dex2jar
         wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
         unzip -q dex-tools-v2.4.zip
         chmod +x dex-tools-v2.4/d2j-*.sh
         echo "DEX2JAR=$(pwd)/dex-tools-v2.4/d2j-dex2jar.sh" >> $GITHUB_ENV
-        echo "JAR2DEX=$(pwd)/dex-tools-v2.4/d2j-jar2dex.sh" >> $GITHUB_ENV
-        # d8 لتحويل JAR->DEX
         echo "D8=$ANDROID_HOME/build-tools/34.0.0/d8" >> $GITHUB_ENV
-        echo "✓ dex tools OK"
+        echo "✓ dex2jar OK"
 
     - name: 🧬 تثبيت native-obfuscator
       run: |
@@ -78,65 +77,79 @@ jobs:
         fi
         ls -lh input.apk
 
-    - name: 🔓 فك APK بـ apktool
+    # ═══════════════════════════════════════════
+    # استخراج DEX مباشرة من APK (بدون apktool)
+    # apktool يحوّل DEX لـ smali لذا لا نعتمد عليه هنا
+    # ═══════════════════════════════════════════
+    - name: 📂 استخراج APK وفصل المحتوى
       run: |
-        $HOME/bin/apktool d input.apk -o apk_decoded -f
-        echo "DEX files:"
-        ls -lh apk_decoded/*.dex
+        mkdir -p apk_raw dex_files apk_rebuild
 
-    # ═══════════════════════════════════════════════════
-    # الخطوة الجوهرية: DEX -> JAR -> native-obfuscator
-    # native-obfuscator يُنتج:
-    #   1. JAR جديد (stubs فقط تستدعي .so)
-    #   2. مجلد cpp/ فيه الكود الحقيقي بـ C++
-    # ═══════════════════════════════════════════════════
-    - name: 🧬 تحويل DEX -> JAR -> C++ (native-obfuscator)
+        # استخراج كامل APK
+        unzip -q input.apk -d apk_raw
+        echo "✓ محتوى APK:"
+        ls apk_raw/
+
+        # نسخ DEX بشكل منفصل
+        cp apk_raw/*.dex dex_files/
+        echo "✓ DEX files:"
+        ls -lh dex_files/
+
+        # نسخ باقي المحتوى (resources, assets, lib, META-INF)
+        rsync -a --exclude='*.dex' apk_raw/ apk_rebuild/
+        echo "✓ باقي الملفات جاهزة في apk_rebuild/"
+
+    # ═══════════════════════════════════════════
+    # تحويل DEX -> JAR -> C++ -> .so
+    # ═══════════════════════════════════════════
+    - name: 🔄 DEX -> JAR بـ dex2jar
       run: |
-        mkdir -p jars obf_output cpp_all
-
-        # نحوّل classes.dex فقط (كود التطبيق الرئيسي)
-        # classes2 فما فوق = مكتبات خارجية، نتركها DEX
-        for dex in apk_decoded/classes.dex apk_decoded/classes2.dex; do
+        mkdir -p jars
+        # classes.dex و classes2.dex = كود التطبيق الرئيسي
+        # classes3+ = مكتبات خارجية (Google, OkHttp, etc) نتركها كما هي
+        for dex in dex_files/classes.dex dex_files/classes2.dex; do
           [ -f "$dex" ] || continue
           name=$(basename "$dex" .dex)
-          echo "━━━ معالجة $name ━━━"
+          echo "→ تحويل $name ..."
+          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null \
+            && echo "  ✓ $(du -sh jars/${name}.jar | cut -f1)" \
+            || echo "  ⚠ تعذّر"
+        done
+        ls -lh jars/
 
-          # DEX -> JAR
-          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null
-          [ -f "jars/${name}.jar" ] || { echo "⚠ تعذّر تحويل $name"; continue; }
-          echo "✓ $name.jar: $(du -sh jars/${name}.jar | cut -f1)"
+    - name: 🧬 JAR -> C++ بـ native-obfuscator
+      run: |
+        mkdir -p obf_output cpp_merged
 
-          # JAR -> native-obfuscator
-          # native-obfuscator يأخذ: input.jar output_dir
+        for jar in jars/*.jar; do
+          name=$(basename "$jar" .jar)
+          echo "━━━ native-obfuscator: $name ━━━"
           mkdir -p "obf_output/$name"
-          java -jar "$NATIVE_OBF_JAR" \
-            "jars/${name}.jar" \
-            "obf_output/$name" \
-            2>/dev/null && echo "✓ obfuscated $name" || echo "⚠ جزئي $name"
 
-          # الـ output يحتوي على:
-          # obf_output/name/output.jar  -> JAR جديد بـ stubs
-          # obf_output/name/cpp/        -> ملفات C++
+          java -jar "$NATIVE_OBF_JAR" \
+            "$jar" \
+            "obf_output/$name" \
+            2>/dev/null && echo "✓ $name done" || echo "⚠ $name partial"
+
+          echo "Output:"
           ls "obf_output/$name/" 2>/dev/null
 
-          # تجميع ملفات C++ في مكان واحد
-          find "obf_output/$name" -name "*.cpp" -exec cp {} cpp_all/ \; 2>/dev/null
-          find "obf_output/$name" -name "*.h"   -exec cp {} cpp_all/ \; 2>/dev/null
+          # جمع ملفات C++
+          find "obf_output/$name" -name "*.cpp" -exec cp {} cpp_merged/ \; 2>/dev/null
+          find "obf_output/$name" -name "*.h"   -exec cp {} cpp_merged/ \; 2>/dev/null
         done
 
-        echo "ملفات C++ المولّدة: $(ls cpp_all/*.cpp 2>/dev/null | wc -l)"
+        echo "✓ إجمالي ملفات C++: $(ls cpp_merged/*.cpp 2>/dev/null | wc -l)"
 
-    - name: ⚙️ تجميع C++ -> .so بـ NDK
+    - name: ⚙️ C++ -> .so بـ Android NDK
       run: |
         mkdir -p jni_project/jni
-        cp cpp_all/*.cpp jni_project/jni/ 2>/dev/null || true
-        cp cpp_all/*.h   jni_project/jni/ 2>/dev/null || true
+        cp cpp_merged/*.cpp jni_project/jni/ 2>/dev/null || true
+        cp cpp_merged/*.h   jni_project/jni/ 2>/dev/null || true
 
-        # Android.mk
         printf 'LOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := sho_native\nLOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)\nLOCAL_LDLIBS := -llog -landroid\ninclude $(BUILD_SHARED_LIBRARY)\n' \
           > jni_project/jni/Android.mk
 
-        # Application.mk
         printf 'APP_ABI := arm64-v8a armeabi-v7a\nAPP_STL := c++_shared\nAPP_OPTIM := release\n' \
           > jni_project/jni/Application.mk
 
@@ -144,59 +157,91 @@ jobs:
         $NDK_HOME/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk -j$(nproc) 2>/dev/null || true
 
         echo ".so files:"
-        find libs -name "*.so" -exec ls -lh {} \; 2>/dev/null || echo "⚠ لا .so - سنستخدم ProGuard فقط"
+        find libs -name "*.so" -exec ls -lh {} \; 2>/dev/null || echo "⚠ لم تُبنَ .so"
 
-    # ═══════════════════════════════════════════════════
-    # استبدال DEX بالـ JAR الجديد (stubs) + إضافة .so
-    # هذه هي الخطوة التي كانت ناقصة سابقاً
-    # ═══════════════════════════════════════════════════
-    - name: 🔄 استبدال DEX القديم بـ stubs + إضافة .so
+    # ═══════════════════════════════════════════
+    # تحويل stub JAR -> DEX جديد واستبدال الأصلي
+    # ═══════════════════════════════════════════
+    - name: 🔀 استبدال DEX بـ stubs + إضافة .so
       run: |
-        # 1. استبدال DEX بالـ JAR المعدّل من native-obfuscator
-        for name in classes classes2; do
-          STUB_JAR=$(find "obf_output/$name" -name "*.jar" 2>/dev/null | head -1)
-          [ -f "$STUB_JAR" ] || continue
-          echo "→ تحويل stub JAR -> DEX لـ $name ..."
-          # استخدام d8 لتحويل JAR -> DEX
-          $D8 --output dex_out_${name}/ "$STUB_JAR" 2>/dev/null && \
-          cp dex_out_${name}/classes.dex apk_decoded/${name}.dex && \
-          echo "  ✓ استُبدل ${name}.dex بـ stubs" || \
-          echo "  ⚠ تعذّر استبدال ${name}.dex"
+        mkdir -p apk_rebuild/lib/arm64-v8a apk_rebuild/lib/armeabi-v7a
+
+        # 1. نسخ DEX الخارجية (classes3-8) كما هي
+        for dex in dex_files/classes3.dex dex_files/classes4.dex dex_files/classes5.dex \
+                   dex_files/classes6.dex dex_files/classes7.dex dex_files/classes8.dex; do
+          [ -f "$dex" ] && cp "$dex" apk_rebuild/ && echo "✓ نسخ $(basename $dex)"
         done
 
-        # 2. إضافة مكتبات .so
-        mkdir -p apk_decoded/lib/arm64-v8a apk_decoded/lib/armeabi-v7a
-        cp jni_project/libs/arm64-v8a/*.so   apk_decoded/lib/arm64-v8a/  2>/dev/null || true
-        cp jni_project/libs/armeabi-v7a/*.so apk_decoded/lib/armeabi-v7a/ 2>/dev/null || true
+        # 2. استبدال classes.dex و classes2.dex بـ stubs من native-obfuscator
+        for name in classes classes2; do
+          STUB_JAR=$(find "obf_output/$name" -name "*.jar" 2>/dev/null | head -1)
+          if [ -f "$STUB_JAR" ]; then
+            echo "→ تحويل stub JAR -> DEX لـ $name ..."
+            mkdir -p "dex_out_$name"
+            $D8 --output "dex_out_$name/" "$STUB_JAR" 2>/dev/null \
+              && cp "dex_out_$name/classes.dex" "apk_rebuild/${name}.dex" \
+              && echo "  ✓ ${name}.dex استُبدل بـ stubs" \
+              || { cp "dex_files/${name}.dex" "apk_rebuild/"; echo "  ⚠ فشل d8، نسخ الأصلي"; }
+          else
+            # إذا فشل native-obfuscator، ننسخ الأصلي
+            cp "dex_files/${name}.dex" "apk_rebuild/"
+            echo "⚠ لا stub لـ $name، نسخ الأصلي"
+          fi
+        done
 
-        echo "✓ DEX المتبقي في APK:"
-        ls -lh apk_decoded/*.dex
-        echo "✓ SO libraries:"
-        find apk_decoded/lib -name "*.so" 2>/dev/null | xargs ls -lh 2>/dev/null || echo "لا .so"
+        # 3. إضافة .so
+        cp jni_project/libs/arm64-v8a/*.so   apk_rebuild/lib/arm64-v8a/  2>/dev/null || true
+        cp jni_project/libs/armeabi-v7a/*.so apk_rebuild/lib/armeabi-v7a/ 2>/dev/null || true
 
-    - name: 🏗️ إعادة تجميع APK
+        echo "━━━ محتوى APK الجديد ━━━"
+        ls -lh apk_rebuild/*.dex 2>/dev/null
+        find apk_rebuild/lib -name "*.so" -exec ls -lh {} \; 2>/dev/null || echo "لا .so"
+
+    # ═══════════════════════════════════════════
+    # إعادة تجميع APK من المجلد مباشرة (بدون apktool)
+    # ═══════════════════════════════════════════
+    - name: 📦 إعادة تجميع APK
       run: |
-        $HOME/bin/apktool b apk_decoded -o sho_rebuilt.apk
-        ls -lh sho_rebuilt.apk
+        cd apk_rebuild
+        zip -q -r ../sho_rebuilt_unsigned.apk . -x "META-INF/*"
+        cd ..
+        ls -lh sho_rebuilt_unsigned.apk
 
-    - name: 🗝️ توقيع APK
+    - name: 🗝️ zipalign + توقيع
       run: |
         PASS="${{ secrets.KEYSTORE_PASS }}"
         [ -z "$PASS" ] && PASS="sho_secure_2025"
+
         keytool -genkeypair -v \
           -keystore sho.keystore -alias sho_key \
           -keyalg RSA -keysize 2048 -validity 10000 \
           -storepass "$PASS" -keypass "$PASS" \
           -dname "CN=Sho,OU=Dev,O=Sho,L=SA,ST=Riyadh,C=SA" 2>/dev/null
-        $BUILD_TOOLS/zipalign -v 4 sho_rebuilt.apk sho_aligned.apk
+
+        $BUILD_TOOLS/zipalign -v 4 sho_rebuilt_unsigned.apk sho_aligned.apk
+
         $BUILD_TOOLS/apksigner sign \
           --ks sho.keystore \
           --ks-pass pass:"$PASS" \
           --key-pass pass:"$PASS" \
           --out sho_protected_signed.apk \
           sho_aligned.apk
+
         $BUILD_TOOLS/apksigner verify --verbose sho_protected_signed.apk
         ls -lh sho_protected_signed.apk
+
+    - name: 📊 تقرير نهائي
+      run: |
+        echo "════════════════════════════════"
+        echo "  تقرير حماية Sho APK"
+        echo "════════════════════════════════"
+        echo "DEX في APK:"
+        ls -lh apk_rebuild/*.dex 2>/dev/null
+        echo "SO libraries:"
+        find apk_rebuild/lib -name "*.so" 2>/dev/null | xargs ls -lh 2>/dev/null || echo "لا .so"
+        echo "حجم APK النهائي:"
+        ls -lh sho_protected_signed.apk
+        echo "════════════════════════════════"
 
     - name: 📤 رفع APK المحمية
       uses: actions/upload-artifact@v4
