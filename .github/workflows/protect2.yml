@@ -1,19 +1,18 @@
-
 name: Protect APK to Native SO
 
 on:
   workflow_dispatch:
     inputs:
       apk_path:
-        description: 'مسار APK داخل الـ repo (مثال: input/app.apk)'
+        description: 'مسار APK (مثال: input/app.apk)'
         required: true
         default: 'input/app.apk'
       package_filter:
-        description: 'الـ package المراد تحويله (مثال: com.yourapp) - اتركه فارغاً للكل'
+        description: 'package للتحويل (مثال: com.yourapp) - فارغ للكل'
         required: false
         default: ''
       sign_apk:
-        description: 'توقيع APK بعد الحماية؟'
+        description: 'توقيع APK؟'
         required: true
         default: 'true'
         type: choice
@@ -39,12 +38,12 @@ jobs:
 
       - name: Setup Android NDK r26
         uses: nttld/setup-ndk@v1
-        id: ndk-setup-step
+        id: ndk-step
         with:
           ndk-version: r26d
           add-to-path: true
 
-      - name: Install build dependencies
+      - name: Install dependencies
         run: |
           sudo apt-get update -q
           sudo apt-get install -y -q cmake ninja-build build-essential zipalign
@@ -54,60 +53,48 @@ jobs:
         run: |
           mkdir -p tools
           wget -q "https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip" -O tools/dex2jar.zip
-          unzip -q tools/dex2jar.zip -d tools/dex2jar_extracted
-          mv tools/dex2jar_extracted/dex-tools-v2.4 tools/dex2jar
+          unzip -q tools/dex2jar.zip -d tools/dex2jar_ext
+          mv tools/dex2jar_ext/dex-tools-v2.4 tools/dex2jar
           chmod +x tools/dex2jar/*.sh
-          echo "dex2jar ready"
 
       - name: Download apktool
         run: |
           wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" -O tools/apktool.jar
-          echo "apktool ready"
 
       - name: Build native-obfuscator
         run: |
           git clone --depth=1 https://github.com/radioegor146/native-obfuscator.git tools/native-obfuscator
           cd tools/native-obfuscator
 
-          GRADLE_FILE=$(find . -name "build.gradle" | xargs grep -l "shadowJar" 2>/dev/null | head -1)
-          echo "Patching: $GRADLE_FILE"
-          python3 << 'PYEOF'
-          import sys
-          gradle_file = None
-          import subprocess
-          result = subprocess.run(['find', '.', '-name', 'build.gradle'], capture_output=True, text=True)
-          for f in result.stdout.strip().split('\n'):
-              try:
-                  with open(f) as fh:
-                      if 'shadowJar' in fh.read():
-                          gradle_file = f
-                          break
-              except:
-                  pass
-          if gradle_file:
-              with open(gradle_file) as fh:
-                  content = fh.read()
-              patch = "    mergeServiceFiles()\n    exclude('META-INF/*.SF')\n    exclude('META-INF/*.DSA')\n    exclude('META-INF/*.RSA')\n    duplicatesStrategy = DuplicatesStrategy.EXCLUDE\n"
-              content = content.replace('shadowJar {', 'shadowJar {\n' + patch)
-              with open(gradle_file, 'w') as fh:
-                  fh.write(content)
-              print(f'Patched: {gradle_file}')
-          PYEOF
+          # Append fix at end of obfuscator/build.gradle to override shadowJar config
+          cat >> obfuscator/build.gradle << 'GRADLE_PATCH'
+
+          // Fix: handle duplicate META-INF entries
+          tasks.withType(com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar).configureEach {
+              mergeServiceFiles()
+              exclude 'META-INF/*.SF'
+              exclude 'META-INF/*.DSA'
+              exclude 'META-INF/*.RSA'
+              exclude 'META-INF/LICENSE'
+              exclude 'META-INF/NOTICE'
+              duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+          }
+          GRADLE_PATCH
 
           chmod +x ./gradlew
-          ./gradlew shadowJar --no-daemon -q
+          ./gradlew :obfuscator:shadowJar --no-daemon -q
 
           echo "=== Built JARs ==="
-          find . -name "*.jar" -path "*/build/libs/*" -exec ls -lh {} \;
+          find obfuscator/build/libs -name "*.jar" -exec ls -lh {} \;
 
-          JAR=$(find . -name "*.jar" -path "*/build/libs/*" ! -name "*-plain.jar" | head -1)
+          JAR=$(find obfuscator/build/libs -name "*.jar" ! -name "*-plain.jar" | head -1)
           if [ -z "$JAR" ]; then
-            JAR=$(find . -name "*.jar" -path "*/build/libs/*" | head -1)
+            JAR=$(find obfuscator/build/libs -name "*.jar" | head -1)
           fi
 
-          echo "Using JAR: $JAR ($(du -sh $JAR | cut -f1))"
-          unzip -p "$JAR" META-INF/MANIFEST.MF 2>/dev/null | head -5
+          echo "Using: $JAR"
           cp "$JAR" ../native-obfuscator.jar
+          echo "JAR size: $(du -sh ../native-obfuscator.jar | cut -f1)"
           cd ../..
 
       - name: Validate APK
@@ -115,10 +102,10 @@ jobs:
           APK="${{ github.event.inputs.apk_path }}"
           if [ ! -f "$APK" ]; then
             echo "APK not found: $APK"
-            find . -name "*.apk" 2>/dev/null | head -20
+            find . -name "*.apk" 2>/dev/null | head -10
             exit 1
           fi
-          echo "APK found: $APK ($(du -sh $APK | cut -f1))"
+          echo "APK: $APK ($(du -sh $APK | cut -f1))"
 
       - name: DEX to JAR
         run: |
@@ -126,11 +113,10 @@ jobs:
           mkdir -p workdir
           unzip -q "$APK" "*.dex" -d workdir/dex_files
           DEX_LIST=$(find workdir/dex_files -name "*.dex" | tr '\n' ' ')
-          echo "DEX files: $DEX_LIST"
           tools/dex2jar/d2j-dex2jar.sh --output workdir/classes.jar --force $DEX_LIST
-          echo "JAR size: $(du -sh workdir/classes.jar | cut -f1)"
+          echo "JAR: $(du -sh workdir/classes.jar | cut -f1)"
 
-      - name: Classes to CPP via native-obfuscator
+      - name: Classes to CPP
         run: |
           mkdir -p workdir/native_output
           ANDROID_JAR="$ANDROID_SDK_ROOT/platforms/android-34/android.jar"
@@ -140,56 +126,41 @@ jobs:
           FILTER="${{ github.event.inputs.package_filter }}"
           FILTER_ARG=""
           if [ -n "$FILTER" ]; then
-            FILTER_PATH=$(echo "$FILTER" | tr '.' '/')
-            FILTER_ARG="--include $FILTER_PATH"
+            FILTER_ARG="--include $(echo $FILTER | tr '.' '/')"
           fi
           java -jar tools/native-obfuscator.jar \
             --input workdir/classes.jar \
             --output workdir/native_output \
             --libraries "$ANDROID_JAR" \
-            $FILTER_ARG \
-            --threads 4
-          CPP_COUNT=$(find workdir/native_output/cpp -name "*.cpp" 2>/dev/null | wc -l)
-          echo "Generated $CPP_COUNT CPP files"
+            $FILTER_ARG --threads 4
+          echo "CPP files: $(find workdir/native_output/cpp -name '*.cpp' 2>/dev/null | wc -l)"
 
-      - name: Build SO libraries with NDK
+      - name: Build SO with NDK
         env:
-          NDK_PATH: ${{ steps.ndk-setup-step.outputs.ndk-path }}
+          NDK_PATH: ${{ steps.ndk-step.outputs.ndk-path }}
         run: |
           mkdir -p workdir/jniLibs
           cp workdir/native_output/CMakeLists.txt workdir/
 
-          echo "Building arm64-v8a..."
-          mkdir -p workdir/build_arm64
-          cmake -B workdir/build_arm64 \
-            -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=arm64-v8a \
-            -DANDROID_PLATFORM=android-26 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS="-O3 -fvisibility=hidden -fstack-protector-strong" \
-            -DCMAKE_CXX_FLAGS="-O3 -fvisibility=hidden -fstack-protector-strong -fno-rtti" \
-            -S workdir -G Ninja
-          cmake --build workdir/build_arm64 --parallel $(nproc)
-          mkdir -p workdir/jniLibs/arm64-v8a
-          find workdir/build_arm64 -name "*.so" -exec cp {} workdir/jniLibs/arm64-v8a/ \;
-
-          echo "Building armeabi-v7a..."
-          mkdir -p workdir/build_arm32
-          cmake -B workdir/build_arm32 \
-            -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
-            -DANDROID_ABI=armeabi-v7a \
-            -DANDROID_PLATFORM=android-26 \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_C_FLAGS="-O3 -fvisibility=hidden" \
-            -DCMAKE_CXX_FLAGS="-O3 -fvisibility=hidden -fno-rtti" \
-            -S workdir -G Ninja
-          cmake --build workdir/build_arm32 --parallel $(nproc)
-          mkdir -p workdir/jniLibs/armeabi-v7a
-          find workdir/build_arm32 -name "*.so" -exec cp {} workdir/jniLibs/armeabi-v7a/ \;
+          for ABI in arm64-v8a armeabi-v7a; do
+            echo "Building $ABI..."
+            mkdir -p workdir/build_$ABI
+            cmake -B workdir/build_$ABI \
+              -DCMAKE_TOOLCHAIN_FILE="$NDK_PATH/build/cmake/android.toolchain.cmake" \
+              -DANDROID_ABI=$ABI \
+              -DANDROID_PLATFORM=android-26 \
+              -DCMAKE_BUILD_TYPE=Release \
+              -DCMAKE_CXX_FLAGS="-O3 -fvisibility=hidden -fstack-protector-strong -fno-rtti" \
+              -DCMAKE_C_FLAGS="-O3 -fvisibility=hidden -fstack-protector-strong" \
+              -S workdir -G Ninja
+            cmake --build workdir/build_$ABI --parallel $(nproc)
+            mkdir -p workdir/jniLibs/$ABI
+            find workdir/build_$ABI -name "*.so" -exec cp {} workdir/jniLibs/$ABI/ \;
+          done
 
           find workdir/jniLibs -name "*.so" -exec du -sh {} \;
 
-      - name: Repackage APK with native libs
+      - name: Repackage APK
         run: |
           APK="${{ github.event.inputs.apk_path }}"
           java -jar tools/apktool.jar d "$APK" -o workdir/apk_decoded --force
@@ -197,40 +168,36 @@ jobs:
           mkdir -p workdir/apk_decoded/lib
           cp -r workdir/jniLibs/* workdir/apk_decoded/lib/
           python3 -c "
-          path = 'workdir/apk_decoded/AndroidManifest.xml'
-          with open(path) as f: c = f.read()
+          p='workdir/apk_decoded/AndroidManifest.xml'
+          with open(p) as f: c=f.read()
           if 'extractNativeLibs' not in c:
-              c = c.replace('<application', '<application android:extractNativeLibs=\"true\"', 1)
-              with open(path, 'w') as f: f.write(c)
-              print('Manifest updated')
+              c=c.replace('<application','<application android:extractNativeLibs=\"true\"',1)
+              with open(p,'w') as f: f.write(c)
           "
           java -jar tools/apktool.jar b workdir/apk_decoded -o workdir/protected_unsigned.apk --use-aapt2
-          echo "Repackaged: $(du -sh workdir/protected_unsigned.apk | cut -f1)"
+          echo "Done: $(du -sh workdir/protected_unsigned.apk | cut -f1)"
 
       - name: Align and Sign APK
         if: ${{ github.event.inputs.sign_apk == 'true' }}
         run: |
-          $ANDROID_SDK_ROOT/build-tools/34.0.0/zipalign -v 4 workdir/protected_unsigned.apk workdir/protected_aligned.apk
-          keytool -genkey -v -keystore workdir/debug.keystore -alias androiddebugkey \
-            -keyalg RSA -keysize 2048 -validity 10000 \
+          $ANDROID_SDK_ROOT/build-tools/34.0.0/zipalign -v 4 \
+            workdir/protected_unsigned.apk workdir/protected_aligned.apk
+          keytool -genkey -v -keystore workdir/debug.keystore \
+            -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 \
             -storepass android -keypass android \
             -dname "CN=Android Debug,O=Android,C=US" 2>/dev/null
           $ANDROID_SDK_ROOT/build-tools/34.0.0/apksigner sign \
-            --ks workdir/debug.keystore \
-            --ks-key-alias androiddebugkey \
+            --ks workdir/debug.keystore --ks-key-alias androiddebugkey \
             --ks-pass pass:android --key-pass pass:android \
-            --out workdir/protected_signed.apk \
-            workdir/protected_aligned.apk
-          echo "Signed: $(du -sh workdir/protected_signed.apk | cut -f1)"
+            --out workdir/protected_signed.apk workdir/protected_aligned.apk
 
       - name: Copy final APK
         run: |
           mkdir -p output
-          if [ -f "workdir/protected_signed.apk" ]; then
-            cp workdir/protected_signed.apk output/protected_app.apk
-          else
-            cp workdir/protected_unsigned.apk output/protected_app.apk
-          fi
+          SRC="workdir/protected_unsigned.apk"
+          [ -f "workdir/protected_signed.apk" ] && SRC="workdir/protected_signed.apk"
+          cp "$SRC" output/protected_app.apk
+          echo "Final: $(du -sh output/protected_app.apk | cut -f1)"
 
       - name: Upload Protected APK
         uses: actions/upload-artifact@v4
@@ -245,8 +212,3 @@ jobs:
           name: native-libs-${{ github.run_number }}
           path: workdir/jniLibs/
           retention-days: 7
-
-      - name: Summary
-        run: |
-          echo "=== Done ==="
-          find output workdir/jniLibs -type f 2>/dev/null | xargs du -sh
