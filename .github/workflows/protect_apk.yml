@@ -1,57 +1,54 @@
-name: 🔐 Sho APK Protection
+name: 🔐 Sho APK - DEX to Native (.so)
 
 on:
   workflow_dispatch:
     inputs:
       apk_url:
-        description: 'رابط APK (اختياري)'
+        description: 'رابط APK (اختياري - أو ضع app.apk في المستودع)'
         required: false
         default: ''
 
 jobs:
-  protect-apk:
+  dex-to-native:
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: 60
 
     steps:
+    # ─────────────────────────────────────────
     - name: 📥 Checkout
       uses: actions/checkout@v4
 
+    # ─────────────────────────────────────────
     - name: ☕ Setup Java 17
       uses: actions/setup-java@v4
       with:
         distribution: 'temurin'
         java-version: '17'
 
-    - name: 📦 تثبيت Android SDK
-      run: |
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O cmdline-tools.zip
-        mkdir -p $HOME/android/cmdline-tools
-        unzip -q cmdline-tools.zip -d $HOME/android/cmdline-tools
-        mv $HOME/android/cmdline-tools/cmdline-tools $HOME/android/cmdline-tools/latest
-        export ANDROID_HOME=$HOME/android
-        export PATH=$PATH:$ANDROID_HOME/cmdline-tools/latest/bin
-        yes | sdkmanager --licenses > /dev/null 2>&1 || true
-        sdkmanager "build-tools;34.0.0" > /dev/null 2>&1
-        echo "ANDROID_HOME=$HOME/android" >> $GITHUB_ENV
-        echo "BUILD_TOOLS=$HOME/android/build-tools/34.0.0" >> $GITHUB_ENV
-        echo "$HOME/android/build-tools/34.0.0" >> $GITHUB_PATH
-        echo "$HOME/android/cmdline-tools/latest/bin" >> $GITHUB_PATH
-        echo "✓ Android SDK OK"
+    # ─────────────────────────────────────────
+    - name: 📱 Setup Android NDK + SDK
+      uses: android-actions/setup-android@v3
 
+    - name: 🔩 تثبيت NDK 25
+      run: |
+        sdkmanager "ndk;25.2.9519653" "build-tools;34.0.0" > /dev/null 2>&1
+        echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
+        echo "BUILD_TOOLS=$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_ENV
+        echo "$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_PATH
+        echo "✓ NDK: $ANDROID_HOME/ndk/25.2.9519653"
+
+    # ─────────────────────────────────────────
     - name: 🔧 تثبيت apktool
       run: |
         mkdir -p $HOME/bin
-        # apktool من GitHub Releases مباشرة (موثوق)
-        APKTOOL_VER="2.9.3"
-        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v${APKTOOL_VER}/apktool_${APKTOOL_VER}.jar" \
+        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" \
              -O $HOME/bin/apktool.jar
-        # wrapper script
         printf '#!/bin/bash\njava -jar %s/bin/apktool.jar "$@"\n' "$HOME" > $HOME/bin/apktool
         chmod +x $HOME/bin/apktool
         echo "$HOME/bin" >> $GITHUB_PATH
-        echo "✓ apktool $APKTOOL_VER"
+        echo "✓ apktool OK"
 
+    # ─────────────────────────────────────────
     - name: 🔧 تثبيت dex2jar
       run: |
         wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
@@ -60,94 +57,168 @@ jobs:
         echo "DEX2JAR=$(pwd)/dex-tools-v2.4/d2j-dex2jar.sh" >> $GITHUB_ENV
         echo "✓ dex2jar OK"
 
-    - name: 🔧 تثبيت ProGuard
+    # ─────────────────────────────────────────
+    - name: 🔧 تثبيت native-obfuscator
       run: |
-        wget -q https://github.com/Guardsquare/proguard/releases/download/v7.4.2/proguard-7.4.2.zip
-        unzip -q proguard-7.4.2.zip
-        echo "PROGUARD_JAR=$(pwd)/proguard-7.4.2/lib/proguard.jar" >> $GITHUB_ENV
-        echo "✓ ProGuard OK"
+        git clone --depth=1 https://github.com/radioegor146/native-obfuscator.git
+        cd native-obfuscator
+        chmod +x gradlew
+        ./gradlew jar -x test --no-daemon -q 2>/dev/null || ./gradlew shadowJar -x test --no-daemon -q
+        # البحث عن الـ jar الناتج
+        JAR=$(find . -name "*.jar" -path "*/build/libs/*" | grep -v sources | head -1)
+        echo "NATIVE_OBF_JAR=$(pwd)/$JAR" >> $GITHUB_ENV
+        echo "✓ native-obfuscator: $JAR"
 
+    # ─────────────────────────────────────────
     - name: 📲 الحصول على APK
       run: |
         if [ -n "${{ github.event.inputs.apk_url }}" ]; then
           wget -q "${{ github.event.inputs.apk_url }}" -O input.apk
-          echo "✓ APK من الرابط"
         elif [ -f "app.apk" ]; then
           cp app.apk input.apk
-          echo "✓ APK من المستودع"
         else
           echo "❌ ضع app.apk في المستودع أو أدخل رابطاً"
           exit 1
         fi
         ls -lh input.apk
 
+    # ─────────────────────────────────────────
     - name: 🔓 فك APK بـ apktool
       run: |
         $HOME/bin/apktool d input.apk -o apk_decoded -f
-        ls apk_decoded/
+        echo "✓ DEX files:"
+        ls -lh apk_decoded/*.dex 2>/dev/null || find apk_decoded -name "*.dex"
 
+    # ─────────────────────────────────────────
     - name: 🔄 DEX -> JAR بـ dex2jar
       run: |
         mkdir -p jars
-        for dex in apk_decoded/*.dex; do
+        # نحوّل classes.dex الرئيسي فقط (كود التطبيق)
+        # classes2+ عادةً مكتبات خارجية لا حاجة لتحويلها
+        for dex in apk_decoded/classes.dex apk_decoded/classes2.dex; do
+          [ -f "$dex" ] || continue
           name=$(basename "$dex" .dex)
-          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null && echo "✓ $name" || echo "⚠ $name"
+          echo "→ تحويل $name ..."
+          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null \
+            && echo "  ✓ $name.jar" || echo "  ⚠ تعذّر $name"
         done
         ls -lh jars/
 
-    - name: 🌀 تشويش بـ ProGuard
+    # ─────────────────────────────────────────
+    - name: 🧬 تحويل JAR -> C++ بـ native-obfuscator
       run: |
-        mkdir -p obf_jars
+        mkdir -p native_output
         for jar in jars/*.jar; do
           name=$(basename "$jar" .jar)
-          java -jar "$PROGUARD_JAR" \
-            -injars "$jar" \
-            -outjars "obf_jars/${name}_obf.jar" \
-            -libraryjars "<java.home>/jmods/java.base.jmod(!**.jar;!module-info.class)" \
-            -dontoptimize -dontpreverify \
-            -repackageclasses '' \
-            -allowaccessmodification \
-            -keep "class * extends android.app.Activity" \
-            -keep "class * extends android.app.Service" \
-            -keep "class * extends android.content.BroadcastReceiver" \
-            -keepattributes "*Annotation*,Signature,Exceptions" \
-            2>/dev/null && echo "✓ $name" || echo "⚠ $name"
+          echo "→ native-obfuscator على $name ..."
+          java -jar "$NATIVE_OBF_JAR" \
+            "$jar" \
+            "native_output/${name}" \
+            2>/dev/null && echo "  ✓ $name" || echo "  ⚠ تعذّر $name"
         done
+        echo "✓ ملفات C++ المولّدة:"
+        find native_output -name "*.cpp" | head -20
+        echo "المجموع: $(find native_output -name "*.cpp" | wc -l) ملف C++"
 
-    - name: 🛡️ إضافة Anti-Debug smali
+    # ─────────────────────────────────────────
+    - name: ⚙️ تجميع C++ -> .so بـ NDK
       run: |
-        mkdir -p apk_decoded/smali/com/sho/security
-        printf '.class public Lcom/sho/security/Guard;\n.super Ljava/lang/Object;\n.method public static isDebugging()Z\n    .locals 1\n    invoke-static {}, Landroid/os/Debug;->isDebuggerConnected()Z\n    move-result v0\n    return v0\n.end method\n' \
-          > apk_decoded/smali/com/sho/security/Guard.smali
-        echo "✓ Guard.smali مضاف"
+        mkdir -p jni_build/jni
+        # نسخ كل ملفات C++ إلى مجلد JNI
+        find native_output -name "*.cpp" -exec cp {} jni_build/jni/ \;
+        find native_output -name "*.h"   -exec cp {} jni_build/jni/ \;
 
-    - name: 📦 إعادة تجميع APK
+        # Android.mk
+        cat > jni_build/jni/Android.mk << 'ANDROIDMK'
+LOCAL_PATH := $(call my-dir)
+include $(CLEAR_VARS)
+LOCAL_MODULE    := sho_native
+LOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)
+LOCAL_LDLIBS    := -llog -landroid
+include $(BUILD_SHARED_LIBRARY)
+ANDROIDMK
+
+        # Application.mk - نبني لـ arm64 + armeabi
+        cat > jni_build/jni/Application.mk << 'APPMK'
+APP_ABI := arm64-v8a armeabi-v7a
+APP_STL := c++_shared
+APP_OPTIM := release
+APPMK
+
+        # بناء المكتبات
+        cd jni_build
+        $NDK_HOME/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk -j$(nproc) 2>/dev/null
+        echo "✓ .so files:"
+        find libs -name "*.so" -exec ls -lh {} \;
+
+    # ─────────────────────────────────────────
+    - name: 📦 دمج .so في APK
+      run: |
+        # إنشاء مجلدات lib في APK المفكوك
+        mkdir -p apk_decoded/lib/arm64-v8a
+        mkdir -p apk_decoded/lib/armeabi-v7a
+
+        # نسخ المكتبات
+        cp jni_build/libs/arm64-v8a/*.so   apk_decoded/lib/arm64-v8a/  2>/dev/null || true
+        cp jni_build/libs/armeabi-v7a/*.so apk_decoded/lib/armeabi-v7a/ 2>/dev/null || true
+
+        # إبقاء DEX المحوّل فقط (الأصلي بعد تعديل native-obfuscator)
+        # native-obfuscator يولّد DEX جديد يستدعي الـ .so
+        find native_output -name "*.dex" -exec cp {} apk_decoded/ \; 2>/dev/null || true
+
+        echo "✓ محتوى lib:"
+        ls -lh apk_decoded/lib/arm64-v8a/
+        ls -lh apk_decoded/lib/armeabi-v7a/
+
+    # ─────────────────────────────────────────
+    - name: 🏗️ إعادة تجميع APK
       run: |
         $HOME/bin/apktool b apk_decoded -o sho_rebuilt.apk
         ls -lh sho_rebuilt.apk
 
+    # ─────────────────────────────────────────
     - name: 🗝️ توقيع APK
       run: |
         PASS="${{ secrets.KEYSTORE_PASS }}"
         [ -z "$PASS" ] && PASS="sho_secure_2025"
+
         keytool -genkeypair -v \
           -keystore sho.keystore -alias sho_key \
           -keyalg RSA -keysize 2048 -validity 10000 \
           -storepass "$PASS" -keypass "$PASS" \
           -dname "CN=Sho,OU=Dev,O=Sho,L=SA,ST=Riyadh,C=SA" 2>/dev/null
+
         $BUILD_TOOLS/zipalign -v 4 sho_rebuilt.apk sho_aligned.apk
+
         $BUILD_TOOLS/apksigner sign \
           --ks sho.keystore \
           --ks-pass pass:"$PASS" \
           --key-pass pass:"$PASS" \
           --out sho_protected_signed.apk \
           sho_aligned.apk
+
         $BUILD_TOOLS/apksigner verify --verbose sho_protected_signed.apk
+        echo "✓ APK موقّع ومحمي"
         ls -lh sho_protected_signed.apk
 
+    # ─────────────────────────────────────────
+    - name: 📊 تقرير الحماية
+      run: |
+        echo "════════════════════════════════"
+        echo "  تقرير حماية Sho APK"
+        echo "════════════════════════════════"
+        echo "DEX files في APK الجديد:"
+        find apk_decoded -name "*.dex" | wc -l
+        echo "SO libraries:"
+        find apk_decoded/lib -name "*.so" 2>/dev/null | wc -l
+        echo "حجم APK النهائي:"
+        ls -lh sho_protected_signed.apk
+        echo "════════════════════════════════"
+
+    # ─────────────────────────────────────────
     - name: 📤 رفع APK المحمية
       uses: actions/upload-artifact@v4
       with:
-        name: sho-protected-apk
+        name: sho-protected-native-apk
         path: sho_protected_signed.apk
-        retention-days: 7
+        retention-days: 30
