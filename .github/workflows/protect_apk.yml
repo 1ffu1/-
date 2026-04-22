@@ -1,14 +1,14 @@
-name: Professional Targeted Protection
+name: Professional Targeted Protection (Fix Dependencies)
 
 on:
   workflow_dispatch:
     inputs:
       apk_name:
-        description: 'اسم ملف الـ APK'
+        description: 'اسم ملف الـ APK (مثلاً app.apk)'
         required: true
         default: 'app.apk'
       my_package:
-        description: 'مسار الكود الخاص بك فقط (مثال: com/example/myapp)'
+        description: 'الباكج نيم الخاص بك (مثلاً com/example/app)'
         required: true
         default: 'com/*/*'
 
@@ -20,22 +20,37 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Python 3
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
       - name: Install Android NDK
         run: |
           echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
           echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-      - name: Setup Tools
+      - name: Setup Tools & Dependencies
         run: |
           git clone --depth 1 https://github.com/codehasan/dex2c dex2c_tool
-          pip install pyelftools click
+          # تثبيت كل المكتبات التي تطلبها Androguard و dcc لمنع الـ ModuleNotFoundError
+          pip install pyelftools click asn1crypto cryptography
 
       - name: Execute Targeted Hardening
         run: |
-          cd dex2c_tool
+          if [ ! -f "${{ github.event.inputs.apk_name }}" ]; then
+            echo "Error: File ${{ github.event.inputs.apk_name }} not found!"
+            exit 1
+          fi
           
-          # الطريقة الاحترافية: حماية الباكج نيم الخاص بك فقط + أي مكتبة خارجية محددة
-          # نستخدم علامة + متبوعة بالمسار بدون رموز معقدة لتجنب أخطاء Regex
+          cd dex2c_tool
+          # إنشاء فلتر دقيق للباكج الخاص بك فقط لضمان الاستقرار
           echo "+${{ github.event.inputs.my_package }}/*" > filter.txt
           
           python3 dcc.py \
