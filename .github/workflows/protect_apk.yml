@@ -1,251 +1,58 @@
-name: 🔐 Sho APK - DEX to Native (.so)
+name: Extreme Dex2C Protection
 
 on:
   workflow_dispatch:
     inputs:
-      apk_url:
-        description: 'رابط APK (اختياري)'
-        required: false
-        default: ''
+      apk_path:
+        description: 'رابط مباشر لملف الـ APK أو تأكد من وجوده في المستودع'
+        required: true
+        default: 'app-release.apk'
 
 jobs:
-  dex-to-native:
-    runs-on: ubuntu-22.04
-    timeout-minutes: 60
+  build:
+    runs-on: ubuntu-latest
 
     steps:
-    - name: 📥 Checkout
-      uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-    - name: ☕ Setup Java 17
-      uses: actions/setup-java@v4
-      with:
-        distribution: 'temurin'
-        java-version: '17'
+      - name: Set up JDK 11
+        uses: actions/setup-java@v3
+        with:
+          java-version: '11'
+          distribution: 'temurin'
 
-    - name: 📱 Setup Android SDK
-      uses: android-actions/setup-android@v3
+      - name: Set up Python 3
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
 
-    - name: 🔩 تثبيت NDK 25
-      run: |
-        sdkmanager "ndk;25.2.9519653" "build-tools;34.0.0" > /dev/null 2>&1
-        echo "NDK_HOME=$ANDROID_HOME/ndk/25.2.9519653" >> $GITHUB_ENV
-        echo "BUILD_TOOLS=$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_ENV
-        echo "$ANDROID_HOME/build-tools/34.0.0" >> $GITHUB_PATH
-        echo "✓ NDK OK"
+      - name: Install Android NDK
+        run: |
+          echo "y" | sudo ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;25.2.9519653"
+          echo "ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/25.2.9519653" >> $GITHUB_ENV
 
-    - name: 🔧 تثبيت apktool
-      run: |
-        mkdir -p $HOME/bin
-        wget -q "https://github.com/iBotPeaches/Apktool/releases/download/v2.9.3/apktool_2.9.3.jar" \
-             -O $HOME/bin/apktool.jar
-        printf '#!/bin/bash\njava -jar %s/bin/apktool.jar "$@"\n' "$HOME" > $HOME/bin/apktool
-        chmod +x $HOME/bin/apktool
-        echo "$HOME/bin" >> $GITHUB_PATH
-        echo "✓ apktool OK"
+      - name: Clone Dex2C Tool (dcc)
+        run: |
+          git clone --depth 1 https://github.com/r0ysue/dcc.git
+          cd dcc
+          pip install -r requirements.txt
 
-    - name: 🔧 تثبيت dex2jar
-      run: |
-        wget -q https://github.com/pxb1988/dex2jar/releases/download/v2.4/dex-tools-v2.4.zip
-        unzip -q dex-tools-v2.4.zip
-        chmod +x dex-tools-v2.4/d2j-*.sh
-        echo "DEX2JAR=$(pwd)/dex-tools-v2.4/d2j-dex2jar.sh" >> $GITHUB_ENV
-        echo "D8=$ANDROID_HOME/build-tools/34.0.0/d8" >> $GITHUB_ENV
-        echo "✓ dex2jar OK"
+      - name: Execute Protection (Full Conversion)
+        run: |
+          # ملاحظة: سنستخدم خيار تحويل كل شيء، لكن يفضل استثناء كلاسات النظام
+          # dcc يحتاج ملف apk ومدخلات معينة
+          python3 dcc/dcc.py ${{ github.event.inputs.apk_path }} \
+          --ndk ${{ env.ANDROID_NDK_HOME }} \
+          --output protected_app.apk
+          
+      - name: Sign APK (Optional but Recommended)
+        run: |
+          # هنا تضع أوامر التوقيع بـ jks الخاص بك لتتمكن من تثبيت التطبيق
+          echo "Signing logic goes here..."
 
-    - name: 🧬 تثبيت native-obfuscator
-      run: |
-        git clone --depth=1 https://github.com/radioegor146/native-obfuscator.git
-        cd native-obfuscator
-        chmod +x gradlew
-        ./gradlew shadowJar -x test --no-daemon -q 2>/dev/null || \
-        ./gradlew jar -x test --no-daemon -q 2>/dev/null
-        JAR=$(find . -name "*.jar" -path "*/build/libs/*" | grep -v sources | grep -v plain | head -1)
-        [ -z "$JAR" ] && JAR=$(find . -name "*.jar" -path "*/build/libs/*" | head -1)
-        echo "NATIVE_OBF_JAR=$(realpath $JAR)" >> $GITHUB_ENV
-        echo "✓ native-obfuscator: $JAR"
-
-    - name: 📲 الحصول على APK
-      run: |
-        if [ -n "${{ github.event.inputs.apk_url }}" ]; then
-          wget -q "${{ github.event.inputs.apk_url }}" -O input.apk
-        elif [ -f "app.apk" ]; then
-          cp app.apk input.apk
-        else
-          echo "❌ ضع app.apk في المستودع أو أدخل رابطاً"
-          exit 1
-        fi
-        ls -lh input.apk
-
-    # ═══════════════════════════════════════════
-    # استخراج DEX مباشرة من APK (بدون apktool)
-    # apktool يحوّل DEX لـ smali لذا لا نعتمد عليه هنا
-    # ═══════════════════════════════════════════
-    - name: 📂 استخراج APK وفصل المحتوى
-      run: |
-        mkdir -p apk_raw dex_files apk_rebuild
-
-        # استخراج كامل APK
-        unzip -q input.apk -d apk_raw
-        echo "✓ محتوى APK:"
-        ls apk_raw/
-
-        # نسخ DEX بشكل منفصل
-        cp apk_raw/*.dex dex_files/
-        echo "✓ DEX files:"
-        ls -lh dex_files/
-
-        # نسخ باقي المحتوى (resources, assets, lib, META-INF)
-        rsync -a --exclude='*.dex' apk_raw/ apk_rebuild/
-        echo "✓ باقي الملفات جاهزة في apk_rebuild/"
-
-    # ═══════════════════════════════════════════
-    # تحويل DEX -> JAR -> C++ -> .so
-    # ═══════════════════════════════════════════
-    - name: 🔄 DEX -> JAR بـ dex2jar
-      run: |
-        mkdir -p jars
-        # classes.dex و classes2.dex = كود التطبيق الرئيسي
-        # classes3+ = مكتبات خارجية (Google, OkHttp, etc) نتركها كما هي
-        for dex in dex_files/classes.dex dex_files/classes2.dex; do
-          [ -f "$dex" ] || continue
-          name=$(basename "$dex" .dex)
-          echo "→ تحويل $name ..."
-          "$DEX2JAR" "$dex" -o "jars/${name}.jar" --force 2>/dev/null \
-            && echo "  ✓ $(du -sh jars/${name}.jar | cut -f1)" \
-            || echo "  ⚠ تعذّر"
-        done
-        ls -lh jars/
-
-    - name: 🧬 JAR -> C++ بـ native-obfuscator
-      run: |
-        mkdir -p obf_output cpp_merged
-
-        for jar in jars/*.jar; do
-          name=$(basename "$jar" .jar)
-          echo "━━━ native-obfuscator: $name ━━━"
-          mkdir -p "obf_output/$name"
-
-          java -jar "$NATIVE_OBF_JAR" \
-            "$jar" \
-            "obf_output/$name" \
-            2>/dev/null && echo "✓ $name done" || echo "⚠ $name partial"
-
-          echo "Output:"
-          ls "obf_output/$name/" 2>/dev/null
-
-          # جمع ملفات C++
-          find "obf_output/$name" -name "*.cpp" -exec cp {} cpp_merged/ \; 2>/dev/null
-          find "obf_output/$name" -name "*.h"   -exec cp {} cpp_merged/ \; 2>/dev/null
-        done
-
-        echo "✓ إجمالي ملفات C++: $(ls cpp_merged/*.cpp 2>/dev/null | wc -l)"
-
-    - name: ⚙️ C++ -> .so بـ Android NDK
-      run: |
-        mkdir -p jni_project/jni
-        cp cpp_merged/*.cpp jni_project/jni/ 2>/dev/null || true
-        cp cpp_merged/*.h   jni_project/jni/ 2>/dev/null || true
-
-        printf 'LOCAL_PATH := $(call my-dir)\ninclude $(CLEAR_VARS)\nLOCAL_MODULE := sho_native\nLOCAL_SRC_FILES := $(wildcard $(LOCAL_PATH)/*.cpp)\nLOCAL_LDLIBS := -llog -landroid\ninclude $(BUILD_SHARED_LIBRARY)\n' \
-          > jni_project/jni/Android.mk
-
-        printf 'APP_ABI := arm64-v8a armeabi-v7a\nAPP_STL := c++_shared\nAPP_OPTIM := release\n' \
-          > jni_project/jni/Application.mk
-
-        cd jni_project
-        $NDK_HOME/ndk-build NDK_PROJECT_PATH=. APP_BUILD_SCRIPT=jni/Android.mk -j$(nproc) 2>/dev/null || true
-
-        echo ".so files:"
-        find libs -name "*.so" -exec ls -lh {} \; 2>/dev/null || echo "⚠ لم تُبنَ .so"
-
-    # ═══════════════════════════════════════════
-    # تحويل stub JAR -> DEX جديد واستبدال الأصلي
-    # ═══════════════════════════════════════════
-    - name: 🔀 استبدال DEX بـ stubs + إضافة .so
-      run: |
-        mkdir -p apk_rebuild/lib/arm64-v8a apk_rebuild/lib/armeabi-v7a
-
-        # 1. نسخ DEX الخارجية (classes3-8) كما هي
-        for dex in dex_files/classes3.dex dex_files/classes4.dex dex_files/classes5.dex \
-                   dex_files/classes6.dex dex_files/classes7.dex dex_files/classes8.dex; do
-          [ -f "$dex" ] && cp "$dex" apk_rebuild/ && echo "✓ نسخ $(basename $dex)"
-        done
-
-        # 2. استبدال classes.dex و classes2.dex بـ stubs من native-obfuscator
-        for name in classes classes2; do
-          STUB_JAR=$(find "obf_output/$name" -name "*.jar" 2>/dev/null | head -1)
-          if [ -f "$STUB_JAR" ]; then
-            echo "→ تحويل stub JAR -> DEX لـ $name ..."
-            mkdir -p "dex_out_$name"
-            $D8 --output "dex_out_$name/" "$STUB_JAR" 2>/dev/null \
-              && cp "dex_out_$name/classes.dex" "apk_rebuild/${name}.dex" \
-              && echo "  ✓ ${name}.dex استُبدل بـ stubs" \
-              || { cp "dex_files/${name}.dex" "apk_rebuild/"; echo "  ⚠ فشل d8، نسخ الأصلي"; }
-          else
-            # إذا فشل native-obfuscator، ننسخ الأصلي
-            cp "dex_files/${name}.dex" "apk_rebuild/"
-            echo "⚠ لا stub لـ $name، نسخ الأصلي"
-          fi
-        done
-
-        # 3. إضافة .so
-        cp jni_project/libs/arm64-v8a/*.so   apk_rebuild/lib/arm64-v8a/  2>/dev/null || true
-        cp jni_project/libs/armeabi-v7a/*.so apk_rebuild/lib/armeabi-v7a/ 2>/dev/null || true
-
-        echo "━━━ محتوى APK الجديد ━━━"
-        ls -lh apk_rebuild/*.dex 2>/dev/null
-        find apk_rebuild/lib -name "*.so" -exec ls -lh {} \; 2>/dev/null || echo "لا .so"
-
-    # ═══════════════════════════════════════════
-    # إعادة تجميع APK من المجلد مباشرة (بدون apktool)
-    # ═══════════════════════════════════════════
-    - name: 📦 إعادة تجميع APK
-      run: |
-        cd apk_rebuild
-        zip -q -r ../sho_rebuilt_unsigned.apk . -x "META-INF/*"
-        cd ..
-        ls -lh sho_rebuilt_unsigned.apk
-
-    - name: 🗝️ zipalign + توقيع
-      run: |
-        PASS="${{ secrets.KEYSTORE_PASS }}"
-        [ -z "$PASS" ] && PASS="sho_secure_2025"
-
-        keytool -genkeypair -v \
-          -keystore sho.keystore -alias sho_key \
-          -keyalg RSA -keysize 2048 -validity 10000 \
-          -storepass "$PASS" -keypass "$PASS" \
-          -dname "CN=Sho,OU=Dev,O=Sho,L=SA,ST=Riyadh,C=SA" 2>/dev/null
-
-        $BUILD_TOOLS/zipalign -v 4 sho_rebuilt_unsigned.apk sho_aligned.apk
-
-        $BUILD_TOOLS/apksigner sign \
-          --ks sho.keystore \
-          --ks-pass pass:"$PASS" \
-          --key-pass pass:"$PASS" \
-          --out sho_protected_signed.apk \
-          sho_aligned.apk
-
-        $BUILD_TOOLS/apksigner verify --verbose sho_protected_signed.apk
-        ls -lh sho_protected_signed.apk
-
-    - name: 📊 تقرير نهائي
-      run: |
-        echo "════════════════════════════════"
-        echo "  تقرير حماية Sho APK"
-        echo "════════════════════════════════"
-        echo "DEX في APK:"
-        ls -lh apk_rebuild/*.dex 2>/dev/null
-        echo "SO libraries:"
-        find apk_rebuild/lib -name "*.so" 2>/dev/null | xargs ls -lh 2>/dev/null || echo "لا .so"
-        echo "حجم APK النهائي:"
-        ls -lh sho_protected_signed.apk
-        echo "════════════════════════════════"
-
-    - name: 📤 رفع APK المحمية
-      uses: actions/upload-artifact@v4
-      with:
-        name: sho-protected-native-apk
-        path: sho_protected_signed.apk
-        retention-days: 30
+      - name: Upload Protected APK
+        uses: actions/upload-artifact@v3
+        with:
+          name: Protected-Hardened-APK
+          path: protected_app.apk
