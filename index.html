@@ -1,251 +1,650 @@
 <!DOCTYPE html>
 <html lang="ar" dir="rtl">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>تحميل تطبيق مُشغلنا - Moshaghilna</title>
-    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
-        :root {
-            --primary-color: #00c896;
-            --secondary-color: #10b981;
-            --bg-gradient: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
-            --text-dark: #1f2937;
-            --text-light: #6b7280;
-            --card-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-        }
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مُشغلنا — مشغّل الفيديو الاحترافي | Moshaghilna</title>
+<meta name="description" content="مشغّل فيديو احترافي يدعم HLS و DRM مع تخصيص كامل لرؤوس الطلب. تجربة تشغيل مرنة وسلسة.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Readex+Pro:wght@300;400;500;600;700&family=Tajawal:wght@300;400;500;700;800&family=Manrope:wght@500;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+:root{
+  --bg:#05070d;
+  --bg-2:#0a0f1c;
+  --surface:rgba(255,255,255,0.03);
+  --border:rgba(255,255,255,0.08);
+  --border-strong:rgba(255,255,255,0.14);
+  --text:#e7ecf3;
+  --muted:#8a93a6;
+  --brand:#00e0a4;
+  --brand-2:#10b981;
+  --brand-glow:rgba(0,224,164,0.35);
+  --accent:#7cf5d1;
+  --max:1200px;
+  --r-xl:28px;
+  --r-lg:20px;
+  --r-md:14px;
+}
 
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Tajawal', sans-serif;
-        }
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  font-family:'Tajawal',sans-serif;
+  background:var(--bg);
+  color:var(--text);
+  line-height:1.7;
+  overflow-x:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+h1,h2,h3,h4{font-family:'Readex Pro',sans-serif;letter-spacing:-.02em;line-height:1.2}
+.mono{font-family:'Manrope',sans-serif;direction:ltr;display:inline-block}
 
-        body {
-            background: var(--bg-gradient);
-            color: var(--text-dark);
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-        }
+/* ========= ATMOSPHERE ========= */
+.aurora{
+  position:fixed;inset:0;z-index:-2;overflow:hidden;pointer-events:none;
+  background:
+    radial-gradient(1200px 600px at 85% -10%, rgba(0,224,164,.18), transparent 60%),
+    radial-gradient(900px 600px at 10% 10%, rgba(16,185,129,.10), transparent 60%),
+    radial-gradient(700px 500px at 50% 110%, rgba(124,245,209,.08), transparent 60%),
+    var(--bg);
+}
+.aurora::before{
+  content:"";position:absolute;inset:-20%;
+  background:
+    radial-gradient(closest-side, rgba(0,224,164,.25), transparent 70%) 30% 30%/40% 40% no-repeat,
+    radial-gradient(closest-side, rgba(16,185,129,.18), transparent 70%) 70% 60%/45% 45% no-repeat;
+  filter:blur(80px);
+  animation:drift 22s ease-in-out infinite alternate;
+}
+.grid-overlay{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;
+  background-image:
+    linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px);
+  background-size:60px 60px;
+  mask-image:radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%);
+  -webkit-mask-image:radial-gradient(ellipse at 50% 0%, #000 0%, transparent 70%);
+}
+.noise{
+  position:fixed;inset:0;z-index:-1;pointer-events:none;opacity:.04;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+}
+@keyframes drift{
+  0%{transform:translate(0,0) rotate(0)}
+  50%{transform:translate(-3%,2%) rotate(8deg)}
+  100%{transform:translate(2%,-2%) rotate(-6deg)}
+}
 
-        /* Hero Section */
-        .container {
-            max-width: 1100px;
-            width: 90%;
-            padding: 60px 0;
-            text-align: center;
-        }
+/* ========= NAV ========= */
+nav{
+  position:sticky;top:14px;z-index:50;
+  width:min(94%,var(--max));margin:14px auto 0;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px 10px 18px;
+  background:rgba(10,15,28,.55);
+  backdrop-filter:blur(18px) saturate(140%);
+  -webkit-backdrop-filter:blur(18px) saturate(140%);
+  border:1px solid var(--border);
+  border-radius:999px;
+}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700}
+.brand img{width:34px;height:34px;border-radius:9px;object-fit:cover;background:#0e1626;border:1px solid var(--border)}
+.brand-name{font-family:'Readex Pro';font-size:1.05rem}
+.brand-name small{display:block;font-size:.7rem;color:var(--muted);font-weight:400;letter-spacing:.04em}
+.nav-links{display:flex;gap:6px}
+.nav-links a{
+  color:var(--muted);text-decoration:none;font-size:.95rem;
+  padding:8px 14px;border-radius:999px;transition:.25s;
+}
+.nav-links a:hover{color:var(--text);background:var(--surface)}
+.nav-cta{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:9px 18px;border-radius:999px;text-decoration:none;
+  background:linear-gradient(135deg,var(--brand),var(--brand-2));
+  color:#03130c;font-weight:700;font-size:.9rem;
+  box-shadow:0 8px 24px -8px var(--brand-glow);
+  transition:.3s;
+}
+.nav-cta:hover{transform:translateY(-2px);box-shadow:0 14px 30px -8px var(--brand-glow)}
+@media(max-width:760px){.nav-links{display:none}}
 
-        .app-logo {
-            width: 120px;
-            margin-bottom: 25px;
-            filter: drop-shadow(0 5px 15px rgba(0, 200, 150, 0.3));
-        }
+/* ========= LAYOUT ========= */
+.section{width:min(92%,var(--max));margin:0 auto;padding:90px 0}
 
-        h1 {
-            font-size: 3rem;
-            font-weight: 800;
-            margin-bottom: 15px;
-            background: linear-gradient(to left, var(--primary-color), var(--secondary-color));
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
+/* ========= HERO ========= */
+.hero{padding-top:80px}
+.hero-grid{
+  display:grid;grid-template-columns:1.1fr .9fr;gap:60px;align-items:center;
+}
+.eyebrow{
+  display:inline-flex;align-items:center;gap:10px;
+  padding:6px 14px;border-radius:999px;
+  background:var(--surface);border:1px solid var(--border);
+  font-size:.85rem;color:var(--accent);margin-bottom:24px;
+}
+.eyebrow .dot{width:7px;height:7px;border-radius:50%;background:var(--brand);box-shadow:0 0 0 4px rgba(0,224,164,.18);animation:pulse 2s infinite}
+@keyframes pulse{50%{box-shadow:0 0 0 8px rgba(0,224,164,0)}}
+h1.hero-title{
+  font-size:clamp(2.4rem,5vw,4.4rem);font-weight:700;
+  margin-bottom:22px;
+}
+h1.hero-title .accent{
+  background:linear-gradient(180deg,var(--brand) 0%,var(--accent) 60%,#fff 100%);
+  -webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent;
+  position:relative;
+}
+h1.hero-title .accent::after{
+  content:"";position:absolute;left:0;right:0;bottom:-6px;height:8px;
+  background:radial-gradient(closest-side,var(--brand-glow),transparent 70%);
+  filter:blur(8px);
+}
+.hero-sub{font-size:1.15rem;color:var(--muted);max-width:560px;margin-bottom:34px}
+.cta-row{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:36px}
+.btn-store{
+  display:inline-flex;align-items:center;gap:14px;
+  padding:13px 22px;border-radius:16px;text-decoration:none;
+  background:#0c1322;border:1px solid var(--border-strong);
+  color:var(--text);transition:.3s;min-width:200px;
+}
+.btn-store:hover{transform:translateY(-3px);border-color:var(--brand);box-shadow:0 18px 40px -16px var(--brand-glow)}
+.btn-store i{font-size:1.9rem;color:var(--brand)}
+.btn-store .meta{text-align:right}
+.btn-store .meta small{display:block;color:var(--muted);font-size:.72rem;letter-spacing:.04em}
+.btn-store .meta strong{font-size:1.1rem;font-family:'Readex Pro';font-weight:600}
 
-        .subtitle {
-            font-size: 1.2rem;
-            color: var(--text-light);
-            margin-bottom: 40px;
-            line-height: 1.6;
-        }
+.trust-row{display:flex;align-items:center;gap:24px;color:var(--muted);font-size:.92rem;flex-wrap:wrap}
+.trust-row .stars i{color:#ffc857;margin-left:2px}
+.trust-row .sep{width:1px;height:18px;background:var(--border-strong)}
 
-        /* Download Cards */
-        .download-wrapper {
-            display: flex;
-            justify-content: center;
-            gap: 20px;
-            flex-wrap: wrap;
-            margin-top: 20px;
-        }
+/* ========= PHONE MOCKUP ========= */
+.mockup-stage{
+  position:relative;display:flex;justify-content:center;
+  perspective:1400px;
+}
+.mockup-stage::before{
+  content:"";position:absolute;inset:auto 0 -10% 0;height:50%;
+  background:radial-gradient(ellipse at center, var(--brand-glow), transparent 70%);
+  filter:blur(40px);z-index:0;
+}
+.phone{
+  position:relative;z-index:2;
+  width:300px;height:610px;
+  background:linear-gradient(160deg,#1a2237,#0a1020);
+  border-radius:48px;
+  padding:14px;
+  box-shadow:
+    0 0 0 2px #2a3550 inset,
+    0 30px 80px -20px rgba(0,0,0,.6),
+    0 0 60px -10px var(--brand-glow);
+  transform:rotateY(-12deg) rotateX(6deg) rotate(-2deg);
+  transition:transform .8s cubic-bezier(.2,.8,.2,1);
+  animation:floaty 6s ease-in-out infinite;
+}
+.phone:hover{transform:rotateY(-4deg) rotateX(2deg) rotate(0)}
+@keyframes floaty{50%{transform:rotateY(-12deg) rotateX(6deg) rotate(-2deg) translateY(-12px)}}
+.phone .notch{
+  position:absolute;top:18px;left:50%;transform:translateX(-50%);
+  width:90px;height:24px;background:#000;border-radius:14px;z-index:3;
+}
+.phone .screen{
+  width:100%;height:100%;border-radius:36px;overflow:hidden;
+  background:#000;
+  position:relative;
+}
+.phone .screen img{width:100%;height:100%;object-fit:cover;display:block}
+.phone .screen .placeholder{
+  position:absolute;inset:0;
+  background:
+    radial-gradient(circle at 30% 30%, rgba(0,224,164,.4), transparent 60%),
+    radial-gradient(circle at 70% 70%, rgba(16,185,129,.3), transparent 60%),
+    linear-gradient(160deg,#0d1626,#06101c);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  color:#fff;padding:30px;text-align:center;gap:18px;
+}
+.phone .screen .placeholder .play{
+  width:80px;height:80px;border-radius:50%;
+  background:linear-gradient(135deg,var(--brand),var(--brand-2));
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 40px var(--brand-glow);
+}
+.phone .screen .placeholder .play i{color:#03130c;font-size:2rem;margin-right:-4px}
 
-        .btn-download {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            background: #111827;
-            color: white;
-            padding: 14px 30px;
-            border-radius: 16px;
-            text-decoration: none;
-            transition: all 0.3s ease;
-            border: 2px solid transparent;
-            min-width: 220px;
-        }
+/* floating chips */
+.chip{
+  position:absolute;z-index:5;
+  background:rgba(13,20,36,.85);backdrop-filter:blur(14px);
+  border:1px solid var(--border-strong);border-radius:14px;
+  padding:10px 14px;display:flex;align-items:center;gap:10px;
+  font-size:.85rem;
+  box-shadow:0 20px 40px -20px rgba(0,0,0,.6);
+  animation:floaty 5s ease-in-out infinite;
+}
+.chip i{color:var(--brand)}
+.chip.c1{top:14%;right:-18px;animation-delay:.2s}
+.chip.c2{bottom:24%;left:-30px;animation-delay:.8s}
+.chip.c3{top:55%;right:-30px;animation-delay:1.2s}
 
-        .btn-download:hover {
-            transform: translateY(-5px);
-            background: #1f2937;
-            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
-            border-color: var(--primary-color);
-        }
+@media(max-width:900px){
+  .hero-grid{grid-template-columns:1fr;gap:40px}
+  .mockup-stage{margin-top:20px}
+  .chip.c2{left:-10px}.chip.c1{right:-10px}.chip.c3{right:-10px}
+}
 
-        .btn-download i {
-            font-size: 1.8rem;
-        }
+/* ========= STATS ========= */
+.stats{
+  display:grid;grid-template-columns:repeat(4,1fr);gap:0;
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-xl);padding:30px 10px;
+  margin-top:60px;
+}
+.stat{padding:14px 18px;text-align:center;border-left:1px solid var(--border)}
+.stat:last-child{border-left:none}
+.stat .num{font-family:'Manrope';font-size:2rem;font-weight:800;background:linear-gradient(180deg,#fff,var(--brand));-webkit-background-clip:text;background-clip:text;-webkit-text-fill-color:transparent}
+.stat .lbl{color:var(--muted);font-size:.9rem}
+@media(max-width:760px){.stats{grid-template-columns:repeat(2,1fr);gap:14px;padding:20px}.stat{border:none;border-bottom:1px solid var(--border);padding-bottom:14px}.stat:nth-last-child(-n+2){border-bottom:none}}
 
-        .btn-text {
-            text-align: right;
-        }
+/* ========= SECTION HEAD ========= */
+.section-head{text-align:center;max-width:680px;margin:0 auto 60px}
+.section-head .tag{color:var(--brand);font-weight:600;letter-spacing:.06em;font-size:.9rem;text-transform:uppercase;font-family:'Readex Pro'}
+.section-head h2{font-size:clamp(2rem,3.2vw,2.8rem);margin:10px 0 14px}
+.section-head p{color:var(--muted);font-size:1.05rem}
 
-        .btn-text span {
-            display: block;
-            font-size: 0.8rem;
-            opacity: 0.8;
-        }
+/* ========= FEATURES ========= */
+.features{display:grid;grid-template-columns:repeat(3,1fr);gap:20px}
+.feat{
+  position:relative;padding:32px;border-radius:var(--r-xl);
+  background:linear-gradient(180deg,rgba(255,255,255,.025),rgba(255,255,255,.01));
+  border:1px solid var(--border);
+  transition:.4s;overflow:hidden;
+}
+.feat::before{
+  content:"";position:absolute;inset:-1px;border-radius:var(--r-xl);padding:1px;
+  background:linear-gradient(135deg,var(--brand),transparent 50%);
+  -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0);
+  -webkit-mask-composite:xor;mask-composite:exclude;
+  opacity:0;transition:.4s;
+}
+.feat:hover{transform:translateY(-6px);background:linear-gradient(180deg,rgba(0,224,164,.06),rgba(255,255,255,.01))}
+.feat:hover::before{opacity:1}
+.feat .ic{
+  width:54px;height:54px;border-radius:14px;
+  background:linear-gradient(135deg,rgba(0,224,164,.18),rgba(16,185,129,.05));
+  border:1px solid var(--border-strong);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--brand);font-size:1.3rem;margin-bottom:22px;
+}
+.feat h3{font-size:1.25rem;margin-bottom:10px}
+.feat p{color:var(--muted);font-size:.97rem}
+.feat .arr{margin-top:18px;color:var(--brand);font-size:.9rem;display:inline-flex;align-items:center;gap:6px;opacity:.7;transition:.3s}
+.feat:hover .arr{opacity:1;gap:10px}
+@media(max-width:900px){.features{grid-template-columns:1fr}}
 
-        .btn-text strong {
-            font-size: 1.2rem;
-        }
+/* ========= HOW IT WORKS ========= */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:20px;position:relative}
+.steps::before{
+  content:"";position:absolute;top:30px;left:8%;right:8%;height:1px;
+  background:repeating-linear-gradient(90deg,var(--border-strong) 0 8px,transparent 8px 16px);
+  z-index:0;
+}
+.step{position:relative;z-index:1;padding:30px;background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r-xl);text-align:center}
+.step .n{
+  width:60px;height:60px;margin:0 auto 18px;
+  border-radius:50%;background:linear-gradient(135deg,var(--brand),var(--brand-2));
+  color:#03130c;font-family:'Manrope';font-weight:800;font-size:1.4rem;
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 0 0 6px var(--bg-2),0 10px 30px -8px var(--brand-glow);
+}
+.step h4{font-size:1.15rem;margin-bottom:10px}
+.step p{color:var(--muted);font-size:.95rem}
+@media(max-width:900px){.steps{grid-template-columns:1fr}.steps::before{display:none}}
 
-        /* Features Section */
-        .features {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 30px;
-            margin-top: 80px;
-        }
+/* ========= SHOWCASE ========= */
+.showcase{
+  display:grid;grid-template-columns:1.1fr .9fr;gap:50px;align-items:center;
+  background:linear-gradient(160deg,rgba(0,224,164,.06),rgba(255,255,255,.01));
+  border:1px solid var(--border);border-radius:var(--r-xl);padding:50px;
+  position:relative;overflow:hidden;
+}
+.showcase::before{
+  content:"";position:absolute;top:-50%;right:-20%;width:60%;height:200%;
+  background:radial-gradient(closest-side,var(--brand-glow),transparent 70%);
+  filter:blur(60px);
+}
+.showcase .text{position:relative;z-index:2}
+.showcase h3{font-size:2rem;margin-bottom:14px}
+.showcase p{color:var(--muted);margin-bottom:26px}
+.checklist{list-style:none;display:grid;gap:12px}
+.checklist li{display:flex;align-items:center;gap:12px;color:var(--text)}
+.checklist li i{color:var(--brand);background:rgba(0,224,164,.12);width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:.75rem}
+.showcase .img-wrap{position:relative;z-index:2;display:flex;justify-content:center}
+.showcase .img-wrap img{
+  width:100%;max-width:340px;border-radius:24px;
+  border:1px solid var(--border-strong);
+  box-shadow:0 30px 60px -20px rgba(0,0,0,.6);
+}
+.showcase .img-wrap .ph{
+  width:100%;max-width:340px;aspect-ratio:9/19;
+  border-radius:24px;border:1px solid var(--border-strong);
+  background:
+    radial-gradient(circle at 50% 30%, rgba(0,224,164,.2), transparent 60%),
+    linear-gradient(160deg,#0d1626,#06101c);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted);font-size:.9rem;
+}
+@media(max-width:900px){.showcase{grid-template-columns:1fr;padding:30px}.showcase h3{font-size:1.5rem}}
 
-        .feature-card {
-            background: white;
-            padding: 30px;
-            border-radius: 24px;
-            box-shadow: var(--card-shadow);
-            transition: 0.3s;
-            border: 1px solid #f1f5f9;
-        }
+/* ========= FAQ ========= */
+.faq{display:grid;gap:12px;max-width:800px;margin:0 auto}
+.faq details{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:var(--r-md);padding:18px 22px;transition:.3s;
+}
+.faq details[open]{border-color:var(--brand);background:linear-gradient(180deg,rgba(0,224,164,.05),transparent)}
+.faq summary{
+  list-style:none;cursor:pointer;font-weight:600;font-family:'Readex Pro';
+  display:flex;align-items:center;justify-content:space-between;font-size:1.05rem;
+}
+.faq summary::-webkit-details-marker{display:none}
+.faq summary::after{
+  content:"+";font-size:1.5rem;color:var(--brand);transition:.3s;
+}
+.faq details[open] summary::after{transform:rotate(45deg)}
+.faq details p{color:var(--muted);margin-top:12px;font-size:.97rem}
 
-        .feature-card:hover {
-            border-color: var(--primary-color);
-        }
+/* ========= CTA ========= */
+.cta-band{
+  text-align:center;padding:70px 30px;
+  background:
+    radial-gradient(ellipse at center, rgba(0,224,164,.18), transparent 70%),
+    linear-gradient(160deg,#0c1424,#070b14);
+  border:1px solid var(--border-strong);border-radius:var(--r-xl);
+  position:relative;overflow:hidden;
+}
+.cta-band::before{
+  content:"";position:absolute;inset:0;
+  background:
+    linear-gradient(rgba(0,224,164,.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0,224,164,.06) 1px, transparent 1px);
+  background-size:40px 40px;
+  mask-image:radial-gradient(ellipse at center,#000,transparent 70%);
+  -webkit-mask-image:radial-gradient(ellipse at center,#000,transparent 70%);
+}
+.cta-band > *{position:relative;z-index:1}
+.cta-band h2{font-size:clamp(1.8rem,3vw,2.6rem);margin-bottom:14px}
+.cta-band p{color:var(--muted);max-width:520px;margin:0 auto 30px}
+.cta-band .cta-row{justify-content:center}
 
-        .icon-box {
-            width: 60px;
-            height: 60px;
-            background: #ecfdf5;
-            color: var(--primary-color);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 15px;
-            margin: 0 auto 20px;
-            font-size: 1.5rem;
-        }
+/* ========= FOOTER ========= */
+footer{
+  margin-top:80px;padding:40px 0;border-top:1px solid var(--border);
+  width:min(92%,var(--max));margin-inline:auto;
+  display:flex;justify-content:space-between;align-items:center;
+  flex-wrap:wrap;gap:20px;color:var(--muted);font-size:.9rem;
+}
+footer .social{display:flex;gap:10px}
+footer .social a{
+  width:38px;height:38px;border-radius:50%;
+  background:var(--surface);border:1px solid var(--border);
+  display:flex;align-items:center;justify-content:center;
+  color:var(--muted);transition:.3s;text-decoration:none;
+}
+footer .social a:hover{color:var(--brand);border-color:var(--brand);transform:translateY(-2px)}
 
-        .feature-card h3 {
-            margin-bottom: 12px;
-            font-weight: 700;
-        }
+/* ========= REVEAL ANIM ========= */
+.reveal{opacity:0;transform:translateY(30px);transition:.9s cubic-bezier(.2,.8,.2,1)}
+.reveal.in{opacity:1;transform:none}
 
-        .feature-card p {
-            color: var(--text-light);
-            font-size: 0.95rem;
-            line-height: 1.5;
-        }
-
-        /* Mockup Section */
-        .mockup-container {
-            margin-top: 80px;
-            position: relative;
-        }
-
-        .mockup-img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 30px;
-            box-shadow: 0 50px 100px -20px rgba(0,0,0,0.2);
-            border: 8px solid #111827;
-        }
-
-        footer {
-            margin-top: 100px;
-            padding: 40px;
-            color: var(--text-light);
-            font-size: 0.9rem;
-        }
-
-        @media (max-width: 768px) {
-            h1 { font-size: 2.2rem; }
-            .btn-download { width: 100%; }
-        }
-    </style>
+</style>
 </head>
 <body>
 
-    <div class="container">
-        <svg class="app-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-            <defs>
-                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:#00c896;stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
-                </linearGradient>
-            </defs>
-            <path d="M20 20 L40 20 L40 80 L20 80 Z" fill="url(#logoGrad)" />
-            <path d="M45 40 L65 40 L65 80 L45 80 Z" fill="url(#logoGrad)" opacity="0.8" />
-            <path d="M70 10 L90 10 L90 80 L70 80 Z" fill="url(#logoGrad)" opacity="0.6" />
-        </svg>
+<!-- atmosphere -->
+<div class="aurora"></div>
+<div class="grid-overlay"></div>
+<div class="noise"></div>
 
-        <h1>تطبيق مُشغلنا</h1>
-        <p class="subtitle">تجربة تشغيل الفيديو الأكثر مرونة وتحكماً. يدعم HLS و DRM مع إمكانية تخصيص الـ User-Agent والـ Referer بكل سهولة.</p>
+<!-- NAV -->
+<nav>
+  <div class="brand">
+    <img src="logo.png" alt="Moshaghilna" onerror="this.style.display='none'">
+    <div class="brand-name">مُشغلنا<small>Moshaghilna</small></div>
+  </div>
+  <div class="nav-links">
+    <a href="#features">المميزات</a>
+    <a href="#how">طريقة العمل</a>
+    <a href="#faq">الأسئلة</a>
+  </div>
+  <a href="#download" class="nav-cta"><i class="fas fa-download"></i> تحميل التطبيق</a>
+</nav>
 
-        <div class="download-wrapper">
-            <a href="#" class="btn-download">
-                <i class="fab fa-google-play"></i>
-                <div class="btn-text">
-                    <span>تحميل من متجر</span>
-                    <strong>Google Play</strong>
-                </div>
-            </a>
-            <a href="#" class="btn-download">
-                <i class="fab fa-apple"></i>
-                <div class="btn-text">
-                    <span>تحميل من متجر</span>
-                    <strong>App Store</strong>
-                </div>
-            </a>
-        </div>
-
-        <div class="features">
-            <div class="feature-card">
-                <div class="icon-box"><i class="fas fa-shield-alt"></i></div>
-                <h3>دعم DRM</h3>
-                <p>إمكانية تشغيل الروابط المحمية بمفاتيح التشفير DRM License بكل سلاسة.</p>
-            </div>
-            <div class="feature-card">
-                <div class="icon-box"><i class="fas fa-code"></i></div>
-                <h3>تخصيص الرؤوس</h3>
-                <p>تحكم كامل في User-Agent و Origin و Referer لتجاوز قيود التشغيل.</p>
-            </div>
-            <div class="feature-card">
-                <div class="icon-box"><i class="fas fa-bolt"></i></div>
-                <h3>دعم HLS</h3>
-                <p>تشغيل ملفات m3u8 والبث المباشر بأعلى جودة ممكنة واستهلاك أقل للبيانات.</p>
-            </div>
-        </div>
-
-        <div class="mockup-container">
-            <p style="margin-bottom: 20px; color: var(--secondary-color); font-weight: bold;">واجهة تطبيق بسيطة وذكية</p>
-            <div style="background: white; padding: 20px; border-radius: 40px; display: inline-block; box-shadow: var(--card-shadow);">
-                <img src="https://via.placeholder.com/300x600/f0fdf4/00c896?text=Moshaghilna+UI" alt="Application Interface" class="mockup-img" style="max-width: 280px;">
-            </div>
-        </div>
+<!-- HERO -->
+<section class="section hero">
+  <div class="hero-grid">
+    <div class="reveal">
+      <span class="eyebrow"><span class="dot"></span> الإصدار 2.0 — متاح الآن</span>
+      <h1 class="hero-title">
+        مشغّل فيديو بلا حدود.<br>
+        <span class="accent">تحكّم كامل، تجربة فائقة.</span>
+      </h1>
+      <p class="hero-sub">
+        مُشغلنا يمنحك تحكّماً غير مسبوق في تشغيل المحتوى — يدعم HLS و DRM،
+        ويتيح لك تخصيص User-Agent و Referer و Origin بأبسط طريقة ممكنة.
+      </p>
+      <div class="cta-row" id="download">
+        <a href="#" class="btn-store">
+          <i class="fab fa-google-play"></i>
+          <div class="meta"><small>تحميل من</small><strong>Google Play</strong></div>
+        </a>
+        <a href="#" class="btn-store">
+          <i class="fab fa-apple"></i>
+          <div class="meta"><small>متوفر على</small><strong>App Store</strong></div>
+        </a>
+      </div>
+      <div class="trust-row">
+        <span class="stars">
+          <i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star"></i><i class="fas fa-star-half-alt"></i>
+          <span style="color:var(--text);margin-right:6px"><span class="mono">4.8</span> / 5</span>
+        </span>
+        <span class="sep"></span>
+        <span><i class="fas fa-users" style="margin-left:6px;color:var(--brand)"></i> أكثر من <span class="mono">50K</span> مستخدم</span>
+        <span class="sep"></span>
+        <span><i class="fas fa-shield-halved" style="margin-left:6px;color:var(--brand)"></i> آمن ومجاني</span>
+      </div>
     </div>
 
-    <footer>
-        &copy; 2026 جميع الحقوق محفوظة لتطبيق مُشغلنا
-    </footer>
+    <!-- mockup -->
+    <div class="mockup-stage reveal">
+      <div class="chip c1"><i class="fas fa-shield-alt"></i> DRM Active</div>
+      <div class="chip c2"><i class="fas fa-bolt"></i> HLS 4K</div>
+      <div class="chip c3"><i class="fas fa-sliders"></i> Custom Headers</div>
+
+      <div class="phone">
+        <div class="notch"></div>
+        <div class="screen">
+          <img src="ssh.jpg" alt="واجهة التطبيق" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+          <div class="placeholder" style="display:none">
+            <div class="play"><i class="fas fa-play"></i></div>
+            <div>
+              <div style="font-family:'Readex Pro';font-size:1.1rem;margin-bottom:6px">مُشغلنا</div>
+              <div style="color:var(--muted);font-size:.85rem">واجهة بسيطة. أداء استثنائي.</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- STATS -->
+  <div class="stats reveal">
+    <div class="stat"><div class="num"><span class="mono">+50K</span></div><div class="lbl">عملية تحميل</div></div>
+    <div class="stat"><div class="num"><span class="mono">4.8</span></div><div class="lbl">متوسط التقييم</div></div>
+    <div class="stat"><div class="num"><span class="mono">99.9%</span></div><div class="lbl">جاهزية التشغيل</div></div>
+    <div class="stat"><div class="num"><span class="mono">+120</span></div><div class="lbl">صيغة مدعومة</div></div>
+  </div>
+</section>
+
+<!-- FEATURES -->
+<section class="section" id="features">
+  <div class="section-head reveal">
+    <span class="tag">المميزات الأساسية</span>
+    <h2>كل ما تحتاجه في مشغّل واحد</h2>
+    <p>مجموعة أدوات متكاملة صُمِّمت بعناية لتمنحك تجربة تشغيل احترافية بلا تنازلات.</p>
+  </div>
+
+  <div class="features">
+    <div class="feat reveal">
+      <div class="ic"><i class="fas fa-shield-halved"></i></div>
+      <h3>دعم DRM متقدّم</h3>
+      <p>تشغيل الروابط المحمية بمفاتيح التشفير DRM License بسلاسة كاملة وبدون أي تعقيدات تقنية.</p>
+      <span class="arr">المزيد <i class="fas fa-arrow-left"></i></span>
+    </div>
+    <div class="feat reveal">
+      <div class="ic"><i class="fas fa-code"></i></div>
+      <h3>تخصيص رؤوس الطلب</h3>
+      <p>تحكّم كامل في User-Agent و Origin و Referer لتجاوز قيود التشغيل المفروضة على المصادر.</p>
+      <span class="arr">المزيد <i class="fas fa-arrow-left"></i></span>
+    </div>
+    <div class="feat reveal">
+      <div class="ic"><i class="fas fa-bolt"></i></div>
+      <h3>دعم HLS و البث المباشر</h3>
+      <p>تشغيل ملفات m3u8 والبث المباشر بأعلى جودة ممكنة مع استهلاك أمثل للبيانات.</p>
+      <span class="arr">المزيد <i class="fas fa-arrow-left"></i></span>
+    </div>
+    <div class="feat reveal">
+      <div class="ic"><i class="fas fa-closed-captioning"></i></div>
+      <h3>ترجمات متعددة</h3>
+      <p>دعم كامل لملفات الترجمة SRT و VTT مع إمكانية تعديل التوقيت والخط واللون.</p>
+      <span class="arr">المزيد <i class="fas fa-arrow-left"></i></span>
+    </div>
+    <div class="feat reveal">
+      <div class="ic"><i class="fas fa-gauge-high"></i></div>
+      <h3>أداء فائق</h3>
+      <p>محرّك تشغيل خفيف ومُحسَّن يضمن لك تجربة سلسة حتى على الأجهزة منخفضة الإمكانيات.</p>
+      <span class="arr">المزيد <i class="fas fa-arrow-left"></i></span>
+    </div>
+    <div class="feat reveal">
+      <div class="ic"><i class="fas fa-cast"></i></div>
+      <h3>البث للشاشات</h3>
+      <p>دعم Chromecast و AirPlay لمشاهدة المحتوى المفضّل لديك على شاشات أكبر بكل سهولة.</p>
+      <span class="arr">المزيد <i class="fas fa-arrow-left"></i></span>
+    </div>
+  </div>
+</section>
+
+<!-- HOW IT WORKS -->
+<section class="section" id="how">
+  <div class="section-head reveal">
+    <span class="tag">طريقة العمل</span>
+    <h2>ثلاث خطوات للبداية</h2>
+    <p>من التحميل إلى التشغيل في أقل من دقيقة واحدة.</p>
+  </div>
+  <div class="steps">
+    <div class="step reveal"><div class="n">1</div><h4>حمّل التطبيق</h4><p>التطبيق متوفر على متجر Google Play و App Store بشكل مجاني.</p></div>
+    <div class="step reveal"><div class="n">2</div><h4>أضف الرابط</h4><p>الصق رابط الفيديو، وعدّل الرؤوس إن احتجت لذلك بنقرة واحدة.</p></div>
+    <div class="step reveal"><div class="n">3</div><h4>استمتع بالمشاهدة</h4><p>شغّل المحتوى بجودة عالية وبدون تقطيع، مع تحكّم كامل في التجربة.</p></div>
+  </div>
+</section>
+
+<!-- SHOWCASE -->
+<section class="section">
+  <div class="showcase reveal">
+    <div class="text">
+      <span class="tag" style="color:var(--brand);font-size:.9rem;letter-spacing:.06em;font-family:'Readex Pro'">تصميم ذكي</span>
+      <h3 style="margin-top:8px">واجهة عربية أصيلة. مدروسة بعناية.</h3>
+      <p>كل تفصيل في التطبيق صُمِّم ليناسب المستخدم العربي — من اتجاه العرض إلى الخطوط والأيقونات.</p>
+      <ul class="checklist">
+        <li><i class="fas fa-check"></i> دعم كامل للغة العربية واتجاه RTL</li>
+        <li><i class="fas fa-check"></i> وضع ليلي ونهاري تلقائي</li>
+        <li><i class="fas fa-check"></i> حفظ سجلّ المشاهدة والإعدادات</li>
+        <li><i class="fas fa-check"></i> تحديثات مستمرة ودعم فني سريع</li>
+      </ul>
+    </div>
+    <div class="img-wrap">
+      <img src="ssh.jpg" alt="واجهة التطبيق" onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
+      <div class="ph" style="display:none">
+        <div style="text-align:center">
+          <i class="fas fa-image" style="font-size:2rem;color:var(--brand);margin-bottom:10px"></i>
+          <div>ضع لقطة الشاشة هنا<br><span style="opacity:.6">ssh.jpg</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- FAQ -->
+<section class="section" id="faq">
+  <div class="section-head reveal">
+    <span class="tag">الأسئلة الشائعة</span>
+    <h2>إجابات لأكثر ما يدور في ذهنك</h2>
+    <p>لم تجد ما تبحث عنه؟ تواصل معنا مباشرةً عبر قنوات الدعم.</p>
+  </div>
+  <div class="faq">
+    <details class="reveal" open>
+      <summary>هل التطبيق مجاني تماماً؟</summary>
+      <p>نعم، التطبيق مجاني بالكامل ولا يحتوي على إعلانات مزعجة. هدفنا تقديم تجربة مشاهدة نظيفة للجميع.</p>
+    </details>
+    <details class="reveal">
+      <summary>هل يدعم التطبيق الروابط المحمية بـ DRM؟</summary>
+      <p>بالتأكيد. مُشغلنا يدعم تشغيل الروابط المحمية بـ Widevine و ClearKey مع إمكانية إدخال License URL يدوياً.</p>
+    </details>
+    <details class="reveal">
+      <summary>كيف يمكنني تخصيص User-Agent و Referer؟</summary>
+      <p>عند إضافة رابط جديد، ستجد قسماً مخصصاً لإدخال الرؤوس Headers، ويمكنك حفظ القيم لإعادة استخدامها لاحقاً.</p>
+    </details>
+    <details class="reveal">
+      <summary>هل التطبيق متوفر على iOS؟</summary>
+      <p>نعم، التطبيق متاح على كل من Android و iOS، مع نفس الميزات على كلا النظامين.</p>
+    </details>
+    <details class="reveal">
+      <summary>ما الصيغ التي يدعمها التطبيق؟</summary>
+      <p>يدعم التطبيق أكثر من 120 صيغة، أبرزها: HLS (m3u8) و DASH و MP4 و MKV و TS وغيرها الكثير.</p>
+    </details>
+  </div>
+</section>
+
+<!-- CTA -->
+<section class="section">
+  <div class="cta-band reveal">
+    <h2>جاهز لتجربة مختلفة؟</h2>
+    <p>انضم إلى عشرات الآلاف من المستخدمين الذين اختاروا مُشغلنا كحلّهم اليومي للمشاهدة.</p>
+    <div class="cta-row">
+      <a href="#" class="btn-store">
+        <i class="fab fa-google-play"></i>
+        <div class="meta"><small>تحميل من</small><strong>Google Play</strong></div>
+      </a>
+      <a href="#" class="btn-store">
+        <i class="fab fa-apple"></i>
+        <div class="meta"><small>متوفر على</small><strong>App Store</strong></div>
+      </a>
+    </div>
+  </div>
+</section>
+
+<!-- FOOTER -->
+<footer>
+  <div>&copy; <span class="mono">2026</span> جميع الحقوق محفوظة لتطبيق مُشغلنا.</div>
+  <div class="social">
+    <a href="#" aria-label="Twitter"><i class="fab fa-x-twitter"></i></a>
+    <a href="#" aria-label="Telegram"><i class="fab fa-telegram"></i></a>
+    <a href="#" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+    <a href="#" aria-label="Email"><i class="fas fa-envelope"></i></a>
+  </div>
+</footer>
+
+<script>
+// scroll-reveal
+const io = new IntersectionObserver((entries)=>{
+  entries.forEach((e,i)=>{
+    if(e.isIntersecting){
+      setTimeout(()=>e.target.classList.add('in'), i*60);
+      io.unobserve(e.target);
+    }
+  });
+},{threshold:.12});
+document.querySelectorAll('.reveal').forEach(el=>io.observe(el));
+</script>
 
 </body>
 </html>
