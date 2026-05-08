@@ -1,1 +1,252 @@
 
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تحميل تطبيق مُشغلنا - Moshaghilna</title>
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary-color: #00c896;
+            --secondary-color: #10b981;
+            --bg-gradient: linear-gradient(135deg, #f0fdf4 0%, #ffffff 100%);
+            --text-dark: #1f2937;
+            --text-light: #6b7280;
+            --card-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Tajawal', sans-serif;
+        }
+
+        body {
+            background: var(--bg-gradient);
+            color: var(--text-dark);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* Hero Section */
+        .container {
+            max-width: 1100px;
+            width: 90%;
+            padding: 60px 0;
+            text-align: center;
+        }
+
+        .app-logo {
+            width: 120px;
+            margin-bottom: 25px;
+            filter: drop-shadow(0 5px 15px rgba(0, 200, 150, 0.3));
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            margin-bottom: 15px;
+            background: linear-gradient(to left, var(--primary-color), var(--secondary-color));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            color: var(--text-light);
+            margin-bottom: 40px;
+            line-height: 1.6;
+        }
+
+        /* Download Cards */
+        .download-wrapper {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            flex-wrap: wrap;
+            margin-top: 20px;
+        }
+
+        .btn-download {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #111827;
+            color: white;
+            padding: 14px 30px;
+            border-radius: 16px;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            min-width: 220px;
+        }
+
+        .btn-download:hover {
+            transform: translateY(-5px);
+            background: #1f2937;
+            box-shadow: 0 15px 30px rgba(0,0,0,0.15);
+            border-color: var(--primary-color);
+        }
+
+        .btn-download i {
+            font-size: 1.8rem;
+        }
+
+        .btn-text {
+            text-align: right;
+        }
+
+        .btn-text span {
+            display: block;
+            font-size: 0.8rem;
+            opacity: 0.8;
+        }
+
+        .btn-text strong {
+            font-size: 1.2rem;
+        }
+
+        /* Features Section */
+        .features {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 30px;
+            margin-top: 80px;
+        }
+
+        .feature-card {
+            background: white;
+            padding: 30px;
+            border-radius: 24px;
+            box-shadow: var(--card-shadow);
+            transition: 0.3s;
+            border: 1px solid #f1f5f9;
+        }
+
+        .feature-card:hover {
+            border-color: var(--primary-color);
+        }
+
+        .icon-box {
+            width: 60px;
+            height: 60px;
+            background: #ecfdf5;
+            color: var(--primary-color);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 15px;
+            margin: 0 auto 20px;
+            font-size: 1.5rem;
+        }
+
+        .feature-card h3 {
+            margin-bottom: 12px;
+            font-weight: 700;
+        }
+
+        .feature-card p {
+            color: var(--text-light);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        /* Mockup Section */
+        .mockup-container {
+            margin-top: 80px;
+            position: relative;
+        }
+
+        .mockup-img {
+            max-width: 100%;
+            height: auto;
+            border-radius: 30px;
+            box-shadow: 0 50px 100px -20px rgba(0,0,0,0.2);
+            border: 8px solid #111827;
+        }
+
+        footer {
+            margin-top: 100px;
+            padding: 40px;
+            color: var(--text-light);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 768px) {
+            h1 { font-size: 2.2rem; }
+            .btn-download { width: 100%; }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <svg class="app-logo" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+                <linearGradient id="logoGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                    <stop offset="0%" style="stop-color:#00c896;stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:#059669;stop-opacity:1" />
+                </linearGradient>
+            </defs>
+            <path d="M20 20 L40 20 L40 80 L20 80 Z" fill="url(#logoGrad)" />
+            <path d="M45 40 L65 40 L65 80 L45 80 Z" fill="url(#logoGrad)" opacity="0.8" />
+            <path d="M70 10 L90 10 L90 80 L70 80 Z" fill="url(#logoGrad)" opacity="0.6" />
+        </svg>
+
+        <h1>تطبيق مُشغلنا</h1>
+        <p class="subtitle">تجربة تشغيل الفيديو الأكثر مرونة وتحكماً. يدعم HLS و DRM مع إمكانية تخصيص الـ User-Agent والـ Referer بكل سهولة.</p>
+
+        <div class="download-wrapper">
+            <a href="#" class="btn-download">
+                <i class="fab fa-google-play"></i>
+                <div class="btn-text">
+                    <span>تحميل من متجر</span>
+                    <strong>Google Play</strong>
+                </div>
+            </a>
+            <a href="#" class="btn-download">
+                <i class="fab fa-apple"></i>
+                <div class="btn-text">
+                    <span>تحميل من متجر</span>
+                    <strong>App Store</strong>
+                </div>
+            </a>
+        </div>
+
+        <div class="features">
+            <div class="feature-card">
+                <div class="icon-box"><i class="fas fa-shield-alt"></i></div>
+                <h3>دعم DRM</h3>
+                <p>إمكانية تشغيل الروابط المحمية بمفاتيح التشفير DRM License بكل سلاسة.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon-box"><i class="fas fa-code"></i></div>
+                <h3>تخصيص الرؤوس</h3>
+                <p>تحكم كامل في User-Agent و Origin و Referer لتجاوز قيود التشغيل.</p>
+            </div>
+            <div class="feature-card">
+                <div class="icon-box"><i class="fas fa-bolt"></i></div>
+                <h3>دعم HLS</h3>
+                <p>تشغيل ملفات m3u8 والبث المباشر بأعلى جودة ممكنة واستهلاك أقل للبيانات.</p>
+            </div>
+        </div>
+
+        <div class="mockup-container">
+            <p style="margin-bottom: 20px; color: var(--secondary-color); font-weight: bold;">واجهة تطبيق بسيطة وذكية</p>
+            <div style="background: white; padding: 20px; border-radius: 40px; display: inline-block; box-shadow: var(--card-shadow);">
+                <img src="https://via.placeholder.com/300x600/f0fdf4/00c896?text=Moshaghilna+UI" alt="Application Interface" class="mockup-img" style="max-width: 280px;">
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        &copy; 2026 جميع الحقوق محفوظة لتطبيق مُشغلنا
+    </footer>
+
+</body>
+</html>
